@@ -91,7 +91,7 @@ object ClaudeClient {
 
 /** IA Big Data n°1 : Gemini, avec recherche Google si le modèle l'accepte. */
 object GeminiClient {
-    fun call(apiKey: String, model: String, prompt: String): String {
+    fun call(apiKey: String, model: String, prompt: String, search: Boolean = true): String {
         fun once(withSearch: Boolean): Pair<Int, String> {
             val part = JSONObject().put("text", prompt)
             val contents = JSONArray().put(JSONObject().put("parts", JSONArray().put(part)))
@@ -106,8 +106,8 @@ object GeminiClient {
             )
         }
 
-        var result = once(true)
-        if (result.first == 400) result = once(false) // modèle sans recherche web : on réessaie sans
+        var result = once(search)
+        if (search && result.first == 400) result = once(false) // modèle sans recherche web : on réessaie sans
         val (code, text) = result
         if (code !in 200..299) throw AiException("Gemini (HTTP $code) : ${Http.errorMessage(text)}")
 
@@ -123,7 +123,7 @@ object GeminiClient {
 
 /** IA Big Data n°2 : OpenAI (API Responses), avec recherche web si le modèle l'accepte. */
 object OpenAiClient {
-    fun call(apiKey: String, model: String, prompt: String): String {
+    fun call(apiKey: String, model: String, prompt: String, search: Boolean = true): String {
         fun once(withSearch: Boolean): Pair<Int, String> {
             val body = JSONObject().put("model", model).put("input", prompt)
             if (withSearch) {
@@ -136,8 +136,8 @@ object OpenAiClient {
             )
         }
 
-        var result = once(true)
-        if (result.first == 400) result = once(false) // modèle sans recherche web : on réessaie sans
+        var result = once(search)
+        if (search && result.first == 400) result = once(false) // modèle sans recherche web : on réessaie sans
         val (code, text) = result
         if (code !in 200..299) throw AiException("OpenAI (HTTP $code) : ${Http.errorMessage(text)}")
 

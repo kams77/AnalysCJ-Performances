@@ -13,6 +13,12 @@ Application Android d'analyse **cartons jaunes** et **corners** à partir de cap
 
 Un pronostic n'est marqué « ≥ 90 % » que si la probabilité estimée atteint réellement 90 %. Sinon l'application l'indique, au lieu d'afficher un faux 90 %. Aucune IA ne peut garantir un résultat sportif.
 
+## Fonctions (version 1.1)
+
+- **Historique 📚** : chaque analyse est enregistrée sur le téléphone. Après le match, marquez chaque pronostic « ✅ Réussi » ou « ❌ Raté » : l'application calcule son vrai taux de réussite, dont celui des pronostics ≥ 90 %, et signale si ses probabilités sont trop optimistes.
+- **Clés API chiffrées** (Android Keystore) et bouton **Tester les connexions** dans les réglages.
+- **Partager / Copier** le pronostic (WhatsApp, SMS, notes…).
+
 ## Obtenir l'APK
 
 ### Option A : sans rien installer (GitHub)

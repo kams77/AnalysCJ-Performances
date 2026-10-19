@@ -2,10 +2,14 @@ package com.analyscj.performances
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -20,13 +24,16 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import org.json.JSONArray
-import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.roundToInt
 
 class MainActivity : Activity() {
 
     private val bg = Color.parseColor("#0F172A")
     private val card = Color.parseColor("#1E293B")
+    private val chip = Color.parseColor("#334155")
     private val textMain = Color.parseColor("#E2E8F0")
     private val textMuted = Color.parseColor("#94A3B8")
     private val green = Color.parseColor("#22C55E")
@@ -37,6 +44,7 @@ class MainActivity : Activity() {
     private lateinit var prefs: Prefs
     private val shots = mutableListOf<ImageUtils.Shot>()
 
+    private lateinit var scrollView: ScrollView
     private lateinit var thumbRow: LinearLayout
     private lateinit var countText: TextView
     private lateinit var contextInput: EditText
@@ -94,13 +102,19 @@ class MainActivity : Activity() {
             ).apply { topMargin = dp(10) }
         }
 
+    private fun matchWrap(top: Int = 0): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(top) }
+
     private fun buildUi() {
-        val scroll = ScrollView(this).apply { setBackgroundColor(bg) }
+        scrollView = ScrollView(this).apply { setBackgroundColor(bg) }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(24), dp(16), dp(32))
         }
-        scroll.addView(root)
+        scrollView.addView(root)
 
         // En-tête
         val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -110,9 +124,12 @@ class MainActivity : Activity() {
         }
         titles.addView(label("Analys C&J Performances", 22f, yellow, true))
         titles.addView(label("Cartons jaunes · Corners", 13f, textMuted))
-        val settingsBtn = button("⚙ Réglages", card, textMain)
+        val historyBtn = button("📚", card, textMain)
+        historyBtn.setOnClickListener { showHistory() }
+        val settingsBtn = button("⚙", card, textMain)
         settingsBtn.setOnClickListener { showSettings() }
         header.addView(titles)
+        header.addView(historyBtn)
         header.addView(settingsBtn)
         root.addView(header)
 
@@ -125,11 +142,9 @@ class MainActivity : Activity() {
                 13f, textMuted
             )
         )
-        val addBtn = button("＋ Ajouter des captures", Color.parseColor("#334155"))
+        val addBtn = button("＋ Ajouter des captures", chip)
         addBtn.setOnClickListener { pickImages() }
-        capCard.addView(addBtn, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(10) })
+        capCard.addView(addBtn, matchWrap(10))
         countText = label("", 13f, textMuted)
         capCard.addView(countText)
         val hs = HorizontalScrollView(this)
@@ -155,20 +170,16 @@ class MainActivity : Activity() {
         analyzeBtn = button("Lancer l'analyse", Color.parseColor("#16A34A"))
         analyzeBtn.textSize = 16f
         analyzeBtn.setOnClickListener { startAnalysis() }
-        root.addView(analyzeBtn, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(14) })
+        root.addView(analyzeBtn, matchWrap(14))
 
         statusText = label("", 13f, amber)
         statusText.gravity = Gravity.CENTER
-        root.addView(statusText, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(8) })
+        root.addView(statusText, matchWrap(8))
 
         resultBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(resultBox)
 
-        setContentView(scroll)
+        setContentView(scrollView)
     }
 
     private fun refreshThumbs() {
@@ -219,7 +230,7 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQ_PICK || resultCode != RESULT_OK || data == null) return
 
-        val uris = mutableListOf<android.net.Uri>()
+        val uris = mutableListOf<Uri>()
         val clip = data.clipData
         if (clip != null) {
             for (i in 0 until clip.itemCount) uris.add(clip.getItemAt(i).uri)
@@ -229,7 +240,6 @@ class MainActivity : Activity() {
 
         statusText.text = "Chargement des captures…"
         Thread {
-            var added = 0
             var failed = 0
             for (uri in uris) {
                 if (shots.size >= MAX_SHOTS) break
@@ -240,7 +250,6 @@ class MainActivity : Activity() {
                 }
                 if (shot != null) {
                     synchronized(shots) { shots.add(shot) }
-                    added++
                 } else {
                     failed++
                 }
@@ -257,6 +266,16 @@ class MainActivity : Activity() {
 
     // --------------------------------------------------------- Réglages
 
+    private fun testOne(key: String, block: () -> String): String {
+        if (key.isBlank()) return "— clé non renseignée"
+        return try {
+            block()
+            "✅ connexion OK"
+        } catch (e: Exception) {
+            "❌ ${e.message}"
+        }
+    }
+
     private fun showSettings() {
         val pad = dp(16)
         val box = LinearLayout(this).apply {
@@ -265,9 +284,7 @@ class MainActivity : Activity() {
         }
 
         fun field(title: String, value: String, secret: Boolean): EditText {
-            box.addView(label(title, 13f, textMain, true), LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(10) })
+            box.addView(label(title, 13f, textMain, true), matchWrap(10))
             val et = EditText(this).apply {
                 setText(value)
                 setTextColor(textMain)
@@ -286,25 +303,50 @@ class MainActivity : Activity() {
         val claudeKey = field("Clé API Claude (obligatoire)", prefs.claudeKey, true)
         val claudeModel = field("Modèle Claude", prefs.claudeModel, false)
 
-        box.addView(label("IA Big Data n°1 · Gemini (saison en cours)", 14f, yellow, true), LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(20) })
+        box.addView(label("IA Big Data n°1 · Gemini (saison en cours)", 14f, yellow, true), matchWrap(20))
         val geminiKey = field("Clé API Gemini", prefs.geminiKey, true)
         val geminiModel = field("Modèle Gemini", prefs.geminiModel, false)
 
-        box.addView(label("IA Big Data n°2 · OpenAI (saison passée, joueurs)", 14f, yellow, true), LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(20) })
+        box.addView(label("IA Big Data n°2 · OpenAI (saison passée, joueurs)", 14f, yellow, true), matchWrap(20))
         val openaiKey = field("Clé API OpenAI", prefs.openaiKey, true)
         val openaiModel = field("Modèle OpenAI", prefs.openaiModel, false)
 
+        // Test des connexions (avec les valeurs saisies, avant même d'enregistrer)
+        val testBtn = button("Tester les connexions", chip)
+        val testOut = label("", 12f, textMain)
+        testBtn.setOnClickListener {
+            val ck = claudeKey.text.toString().trim()
+            val cm = claudeModel.text.toString().trim().ifBlank { Prefs.DEFAULT_CLAUDE }
+            val gk = geminiKey.text.toString().trim()
+            val gm = geminiModel.text.toString().trim().ifBlank { Prefs.DEFAULT_GEMINI }
+            val ok = openaiKey.text.toString().trim()
+            val om = openaiModel.text.toString().trim().ifBlank { Prefs.DEFAULT_OPENAI }
+            testOut.text = "Test en cours…"
+            testBtn.isEnabled = false
+            Thread {
+                val l1 = "Claude : " + testOne(ck) {
+                    ClaudeClient.call(ck, cm, "Réponds uniquement OK.", "Réponds OK", emptyList(), 16)
+                }
+                val l2 = "Big Data n°1 (Gemini) : " + testOne(gk) {
+                    GeminiClient.call(gk, gm, "Réponds uniquement OK.", false)
+                }
+                val l3 = "Big Data n°2 (OpenAI) : " + testOne(ok) {
+                    OpenAiClient.call(ok, om, "Réponds uniquement OK.", false)
+                }
+                runOnUiThread {
+                    testOut.text = listOf(l1, l2, l3).joinToString("\n")
+                    testBtn.isEnabled = true
+                }
+            }.start()
+        }
+        box.addView(testBtn, matchWrap(20))
+        box.addView(testOut, matchWrap(8))
+
         box.addView(
             label(
-                "Les clés sont stockées uniquement sur ce téléphone et envoyées seulement au service concerné. Si un nom de modèle est refusé, remplacez-le par un modèle disponible sur votre compte.",
+                "Les clés sont chiffrées sur ce téléphone (Android Keystore) et envoyées seulement au service concerné. Si un nom de modèle est refusé, remplacez-le par un modèle disponible sur votre compte.",
                 12f, textMuted
-            ), LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(16) }
+            ), matchWrap(16)
         )
 
         val sv = ScrollView(this).apply {
@@ -323,6 +365,98 @@ class MainActivity : Activity() {
                 prefs.openaiKey = openaiKey.text.toString()
                 prefs.openaiModel = openaiModel.text.toString()
                 Toast.makeText(this, "Réglages enregistrés.", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Annuler", null)
+            .show()
+    }
+
+    // --------------------------------------------------------- Historique
+
+    private fun showHistory() {
+        val entries = History.load(this)
+        val st = History.stats(entries)
+        val fmt = SimpleDateFormat("dd/MM HH:mm", Locale.FRANCE)
+
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+
+        box.addView(label("Bilan de vos pronostics notés", 14f, yellow, true))
+        if (st.rated == 0) {
+            box.addView(
+                label(
+                    "Aucun résultat saisi pour l'instant. Ouvrez une analyse et marquez chaque pronostic « Réussi » ou « Raté » après le match : l'application mesure ainsi sa vraie fiabilité.",
+                    12f, textMuted
+                ), matchWrap(4)
+            )
+        } else {
+            val rate = 100.0 * st.won / st.rated
+            box.addView(label("Global : ${st.won}/${st.rated} réussis (${rate.roundToInt()} %)", 13f, textMain), matchWrap(4))
+            box.addView(label("Probabilité moyenne annoncée : ${st.avgPredicted.roundToInt()} %", 13f, textMuted))
+            if (st.sureRated > 0) {
+                val r90 = 100.0 * st.sureWon / st.sureRated
+                box.addView(label("Pronostics ≥ 90 % : ${st.sureWon}/${st.sureRated} réussis (${r90.roundToInt()} %)", 13f, textMain))
+            } else {
+                box.addView(label("Pronostics ≥ 90 % : aucun noté", 13f, textMuted))
+            }
+            val verdict: String
+            val verdictColor: Int
+            if (st.rated < 10) {
+                verdict = "Échantillon encore petit (moins de 10 pronostics notés) : bilan peu significatif."
+                verdictColor = textMuted
+            } else if (st.avgPredicted - rate > 8.0) {
+                verdict = "⚠ Les probabilités annoncées sont plus hautes que la réussite réelle : ne vous fiez pas aveuglément aux pourcentages."
+                verdictColor = amber
+            } else {
+                verdict = "Les probabilités annoncées restent cohérentes avec la réussite réelle."
+                verdictColor = green
+            }
+            box.addView(label(verdict, 12f, verdictColor), matchWrap(4))
+        }
+
+        box.addView(label("Analyses enregistrées", 14f, yellow, true), matchWrap(16))
+
+        var dialog: AlertDialog? = null
+        if (entries.isEmpty()) {
+            box.addView(label("Aucune analyse enregistrée.", 12f, textMuted), matchWrap(4))
+        }
+        for (e in entries) {
+            val parsed = ResultParser.parse(e.finalText)
+            val total = parsed?.picks?.size ?: 0
+            val noted = e.outcomes.count { it.value != 0 }
+            val row = label("${fmt.format(Date(e.ts))} · ${e.title}\n$noted/$total pronostic(s) noté(s)", 13f, textMain)
+            row.background = roundBg(chip, 10)
+            row.setPadding(dp(12), dp(10), dp(12), dp(10))
+            row.setOnClickListener {
+                dialog?.dismiss()
+                renderEntry(e)
+            }
+            box.addView(row, matchWrap(8))
+        }
+
+        val sv = ScrollView(this).apply {
+            setBackgroundColor(card)
+            addView(box)
+        }
+
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("Historique")
+            .setView(sv)
+            .setNegativeButton("Fermer", null)
+            .setNeutralButton("Tout effacer") { _, _ -> confirmClearHistory() }
+            .create()
+        dialog = dlg
+        dlg.show()
+    }
+
+    private fun confirmClearHistory() {
+        AlertDialog.Builder(this)
+            .setTitle("Effacer l'historique ?")
+            .setMessage("Toutes les analyses enregistrées et vos résultats notés seront supprimés.")
+            .setPositiveButton("Effacer") { _, _ ->
+                History.clear(this)
+                Toast.makeText(this, "Historique effacé.", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Annuler", null)
             .show()
@@ -353,9 +487,28 @@ class MainActivity : Activity() {
             try {
                 val result = Analyzer(prefs) { msg -> runOnUiThread { statusText.text = msg } }
                     .run(images, ctx)
+
+                val parsed = ResultParser.parse(result.finalText)
+                val now = System.currentTimeMillis()
+                val entry = Entry(
+                    id = now,
+                    ts = now,
+                    title = if (parsed != null) ResultParser.title(parsed) else "Analyse",
+                    finalText = result.finalText,
+                    extraction = result.extraction,
+                    bigData1 = result.bigData1,
+                    bigData2 = result.bigData2,
+                    notes = result.notes,
+                    outcomes = mutableMapOf()
+                )
+                try {
+                    History.add(this, entry)
+                } catch (e: Exception) {
+                    // l'historique est un bonus : on n'interrompt pas l'affichage
+                }
                 runOnUiThread {
                     statusText.text = ""
-                    renderResult(result)
+                    renderEntry(entry)
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -381,98 +534,85 @@ class MainActivity : Activity() {
 
     // --------------------------------------------------------- Résultats
 
-    private fun extractJson(text: String): JSONObject? {
-        val start = text.indexOf('{')
-        val end = text.lastIndexOf('}')
-        if (start < 0 || end <= start) return null
-        return try {
-            JSONObject(text.substring(start, end + 1))
-        } catch (e: Exception) {
-            null
-        }
+    private fun persistOutcomes(entry: Entry) {
+        val copy = HashMap(entry.outcomes)
+        Thread {
+            try {
+                History.updateOutcomes(this, entry.id, copy)
+            } catch (e: Exception) {
+                // ignoré : la note reste visible à l'écran
+            }
+        }.start()
     }
 
-    private fun stringList(arr: JSONArray?): List<String> {
-        if (arr == null) return emptyList()
-        val out = mutableListOf<String>()
-        for (i in 0 until arr.length()) {
-            val s = arr.optString(i, "")
-            if (s.isNotBlank()) out.add(s)
+    /** Boutons « Réussi / Raté » : permettent de mesurer la vraie fiabilité de l'application. */
+    private fun outcomeRow(entry: Entry, idx: Int): LinearLayout {
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val won = button("✅ Réussi", chip, textMain)
+        val lost = button("❌ Raté", chip, textMain)
+        won.textSize = 13f
+        lost.textSize = 13f
+
+        fun refresh() {
+            val o = entry.outcomes[idx] ?: 0
+            won.background = roundBg(if (o == 1) Color.parseColor("#15803D") else chip, 10)
+            lost.background = roundBg(if (o == -1) Color.parseColor("#B91C1C") else chip, 10)
         }
-        return out
+
+        fun mark(v: Int) {
+            val cur = entry.outcomes[idx] ?: 0
+            entry.outcomes[idx] = if (cur == v) 0 else v
+            refresh()
+            persistOutcomes(entry)
+        }
+
+        won.setOnClickListener { mark(1) }
+        lost.setOnClickListener { mark(-1) }
+        refresh()
+
+        row.addView(won, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(6) })
+        row.addView(lost, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        return row
     }
 
-    private class Pick(
-        val marche: String,
-        val cible: String,
-        val selection: String,
-        val probabilite: Double,
-        val justification: String,
-        val facteurs: List<String>
-    )
-
-    private fun renderResult(res: Analyzer.Result) {
+    private fun renderEntry(entry: Entry) {
         resultBox.removeAllViews()
 
-        val root = extractJson(res.finalText)
-        if (root == null) {
+        val parsed = ResultParser.parse(entry.finalText)
+        if (parsed == null) {
             val c = cardBox()
             c.addView(label("Réponse de Claude (format inattendu)", 16f, amber, true))
-            c.addView(label(res.finalText, 13f, textMain))
+            c.addView(label(entry.finalText, 13f, textMain))
             resultBox.addView(c)
-            addDetails(res)
+            addDetails(entry)
+            scrollToResults()
             return
         }
 
-        val match = root.optJSONObject("match")
-        val home = match?.optString("domicile", "") ?: ""
-        val away = match?.optString("exterieur", "") ?: ""
-        val comp = match?.optString("competition", "") ?: ""
-        val date = match?.optString("date", "") ?: ""
-        val quality = root.optString("qualite_donnees", "partielle")
-
-        val picks = mutableListOf<Pick>()
-        val arr = root.optJSONArray("pronostics")
-        if (arr != null) {
-            for (i in 0 until arr.length()) {
-                val o = arr.optJSONObject(i) ?: continue
-                var p = o.optDouble("probabilite", 0.0)
-                if (p in 0.0..1.0) p *= 100.0
-                picks.add(
-                    Pick(
-                        o.optString("marche"), o.optString("cible"), o.optString("selection"),
-                        p, o.optString("justification"), stringList(o.optJSONArray("facteurs"))
-                    )
-                )
-            }
-        }
-        picks.sortByDescending { it.probabilite }
-
         // Carte match
         val head = cardBox()
-        val title = if (home.isNotBlank() || away.isNotBlank()) "$home  vs  $away" else "Match analysé"
-        head.addView(label(title, 18f, textMain, true))
-        val sub = listOf(comp, date).filter { it.isNotBlank() }.joinToString(" · ")
+        head.addView(label(ResultParser.title(parsed), 18f, textMain, true))
+        val sub = listOf(parsed.comp, parsed.date).filter { it.isNotBlank() }.joinToString(" · ")
         if (sub.isNotBlank()) head.addView(label(sub, 13f, textMuted))
-        val qColor = when (quality) {
+        val qColor = when (parsed.quality) {
             "bonne" -> green
             "faible" -> red
             else -> amber
         }
-        head.addView(label("Qualité des données : $quality", 13f, qColor, true))
+        head.addView(label("Qualité des données : ${parsed.quality}", 13f, qColor, true))
         resultBox.addView(head)
 
         // Alertes sur les sources
-        if (res.notes.isNotEmpty()) {
+        if (entry.notes.isNotEmpty()) {
             val c = cardBox()
             c.addView(label("⚠ Sources indisponibles", 14f, amber, true))
-            for (n in res.notes) c.addView(label("• $n", 12f, textMain))
+            for (n in entry.notes) c.addView(label("• $n", 12f, textMain))
             c.addView(label("Sans les deux IA Big Data, la fiabilité des pronostics est réduite.", 12f, textMuted))
             resultBox.addView(c)
         }
 
         // Bandeau 90 %
-        val reliable = picks.filter { it.probabilite >= 90.0 && quality != "faible" }
+        val reliable = parsed.picks.filter { ResultParser.isSure(it, parsed.quality) }
         val banner = cardBox()
         if (reliable.isEmpty()) {
             banner.addView(label("Aucun pronostic n'atteint 90 %", 16f, amber, true))
@@ -488,16 +628,10 @@ class MainActivity : Activity() {
         resultBox.addView(banner)
 
         // Pronostics
-        for (p in picks) {
-            val sure = p.probabilite >= 90.0 && quality != "faible"
+        for ((idx, p) in parsed.picks.withIndex()) {
+            val sure = ResultParser.isSure(p, parsed.quality)
             val c = cardBox()
-            val icon = if (p.marche == "corners") "⛳ Corners" else "🟨 Cartons jaunes"
-            val target = when (p.cible) {
-                "domicile" -> "domicile"
-                "exterieur" -> "extérieur"
-                else -> "match"
-            }
-            c.addView(label("$icon · $target", 13f, textMuted))
+            c.addView(label("${ResultParser.marketLabel(p)} · ${ResultParser.targetLabel(p)}", 13f, textMuted))
             c.addView(label(p.selection, 20f, textMain, true))
             c.addView(label("Probabilité estimée : ${p.probabilite.toInt()} %", 15f, if (sure) green else amber, true))
             c.addView(
@@ -508,28 +642,52 @@ class MainActivity : Activity() {
             )
             if (p.justification.isNotBlank()) c.addView(label(p.justification, 13f, textMain))
             for (f in p.facteurs) c.addView(label("• $f", 12f, textMuted))
+            c.addView(label("Résultat réel après le match (pour le suivi) :", 12f, textMuted), matchWrap(10))
+            c.addView(outcomeRow(entry, idx), matchWrap(4))
             resultBox.addView(c)
         }
 
         // Synthèse
-        val synth = root.optString("synthese", "")
-        if (synth.isNotBlank()) {
+        if (parsed.synthese.isNotBlank()) {
             val c = cardBox()
             c.addView(label("🔎 Synthèse", 15f, textMain, true))
-            c.addView(label(synth, 13f, textMain))
+            c.addView(label(parsed.synthese, 13f, textMain))
             resultBox.addView(c)
         }
 
         // Données manquantes
-        val missing = stringList(root.optJSONArray("donnees_manquantes"))
-        if (missing.isNotEmpty()) {
+        if (parsed.missing.isNotEmpty()) {
             val c = cardBox()
             c.addView(label("Données manquantes", 15f, amber, true))
-            for (m in missing) c.addView(label("• $m", 12f, textMain))
+            for (m in parsed.missing) c.addView(label("• $m", 12f, textMain))
             resultBox.addView(c)
         }
 
-        addDetails(res)
+        // Partage
+        val shareText = ResultParser.shareText(parsed)
+        val shareCard = cardBox()
+        shareCard.addView(label("Partager ce pronostic", 15f, textMain, true))
+        val shareRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val shareBtn = button("Partager", Color.parseColor("#2563EB"))
+        val copyBtn = button("Copier", chip, textMain)
+        shareBtn.setOnClickListener {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, shareText)
+            }
+            startActivity(Intent.createChooser(send, "Partager l'analyse"))
+        }
+        copyBtn.setOnClickListener {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("Analys C&J Performances", shareText))
+            Toast.makeText(this, "Analyse copiée.", Toast.LENGTH_SHORT).show()
+        }
+        shareRow.addView(shareBtn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(6) })
+        shareRow.addView(copyBtn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        shareCard.addView(shareRow, matchWrap(8))
+        resultBox.addView(shareCard)
+
+        addDetails(entry)
 
         val warn = cardBox()
         warn.addView(
@@ -539,12 +697,18 @@ class MainActivity : Activity() {
             )
         )
         resultBox.addView(warn)
+
+        scrollToResults()
     }
 
-    private fun addDetails(res: Analyzer.Result) {
-        addCollapsible("Détail · Lecture des captures (Claude)", res.extraction)
-        addCollapsible("Détail · Big Data n°1 (Gemini)", res.bigData1)
-        addCollapsible("Détail · Big Data n°2 (OpenAI)", res.bigData2)
+    private fun scrollToResults() {
+        scrollView.post { scrollView.smoothScrollTo(0, resultBox.top) }
+    }
+
+    private fun addDetails(entry: Entry) {
+        addCollapsible("Détail · Lecture des captures (Claude)", entry.extraction)
+        addCollapsible("Détail · Big Data n°1 (Gemini)", entry.bigData1)
+        addCollapsible("Détail · Big Data n°2 (OpenAI)", entry.bigData2)
     }
 
     private fun addCollapsible(title: String, content: String) {
