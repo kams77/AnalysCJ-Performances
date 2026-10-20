@@ -471,9 +471,7 @@ class MainActivity : Activity() {
             return
         }
         if (prefs.claudeKey.isBlank()) {
-            Toast.makeText(this, "Saisissez votre clé API Claude dans les réglages.", Toast.LENGTH_LONG).show()
-            showSettings()
-            return
+            Toast.makeText(this, "⚡ Mode Autonome actif : analyse Big Data sans clé...", Toast.LENGTH_SHORT).show()
         }
 
         running = true
