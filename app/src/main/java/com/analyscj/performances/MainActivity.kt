@@ -225,6 +225,21 @@ class MainActivity : Activity() {
             })
         }
         matchCard.addView(contextInput, matchWrap(4))
+
+        val swapBtn = button("🔄 Inverser Domicile / Extérieur", card, yellow).apply {
+            textSize = 11f
+            setOnClickListener {
+                val currentText = contextInput.text.toString().trim()
+                val parsed = try { Analyzer.parseMatch(currentText) } catch (e: Exception) { null }
+                if (parsed != null) {
+                    val swapped = "${parsed.away} vs ${parsed.home}"
+                    selectedMatchName = swapped
+                    contextInput.setText(swapped)
+                    updateMatchPreview(swapped)
+                }
+            }
+        }
+        matchCard.addView(swapBtn, matchWrap(6))
         root.addView(matchCard)
 
         // Aperçu en direct du match sélectionné
@@ -269,8 +284,14 @@ class MainActivity : Activity() {
     private fun updateMatchPreview(matchName: String) {
         val curLeague = leaguesList.getOrNull(selectedLeagueIndex)
         val leagueTitle = curLeague?.name ?: "Championnat"
-        matchPreviewTitle.text = matchName
-        matchPreviewSub.text = "$leagueTitle · Cartons Jaunes & Corners (ngengesport.cd)"
+        val parsed = try { Analyzer.parseMatch(matchName) } catch (e: Exception) { null }
+        if (parsed != null) {
+            matchPreviewTitle.text = "${parsed.home} ⚔️ ${parsed.away}"
+            matchPreviewSub.text = "${parsed.competition} · Arbitre : ${parsed.referee.name} (${parsed.referee.avgYellows} CJ/m) · Cartons & Corners ngengesport.cd"
+        } else {
+            matchPreviewTitle.text = matchName
+            matchPreviewSub.text = "$leagueTitle · Cartons Jaunes & Corners (ngengesport.cd)"
+        }
     }
 
     private fun selectLeague(index: Int, changeMatch: Boolean = true) {
