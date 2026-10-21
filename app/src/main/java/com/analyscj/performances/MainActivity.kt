@@ -450,7 +450,7 @@ class MainActivity : Activity() {
         if (parsed != null) {
             for (pick in parsed.picks) {
                 val pCard = cardBox()
-                val isYellow = pick.market.contains("carton", ignoreCase = true)
+                val isYellow = pick.marche.contains("carton", ignoreCase = true)
                 val badgeColor = if (isYellow) yellow else green
                 val badgeTitle = if (isYellow) "🟨 CARTONS JAUNES" else "🚩 CORNERS"
 
@@ -458,7 +458,7 @@ class MainActivity : Activity() {
                 val titleView = label(badgeTitle, 11f, badgeColor, true).apply {
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 }
-                val probaView = label("${pick.probability}%", 14f, green, true)
+                val probaView = label("${pick.probabilite.toInt()}%", 14f, green, true)
                 topRow.addView(titleView)
                 topRow.addView(probaView)
                 pCard.addView(topRow)
@@ -466,16 +466,16 @@ class MainActivity : Activity() {
                 pCard.addView(label(pick.selection, 15f, Color.WHITE, true), matchWrap(4))
                 pCard.addView(label(pick.justification, 12f, textMain), matchWrap(6))
 
-                for (factor in pick.factors) {
+                for (factor in pick.facteurs) {
                     pCard.addView(label("• $factor", 11f, textMuted), matchWrap(2))
                 }
                 resultBox.addView(pCard)
             }
 
-            if (parsed.synthesis.isNotBlank()) {
+            if (parsed.synthese.isNotBlank()) {
                 val synthCard = cardBox()
                 synthCard.addView(label("Synthèse du Rapprochement", 13f, yellow, true))
-                synthCard.addView(label(parsed.synthesis, 12f, textMain), matchWrap(4))
+                synthCard.addView(label(parsed.synthese, 12f, textMain), matchWrap(4))
                 resultBox.addView(synthCard)
             }
         } else {
