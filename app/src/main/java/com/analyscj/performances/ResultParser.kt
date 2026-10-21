@@ -85,8 +85,8 @@ object ResultParser {
         )
     }
 
-    /** Un pronostic n'est « fiable » que si sa probabilité atteint 90 % et que les données ne sont pas jugées faibles. */
-    fun isSure(p: Pick, quality: String): Boolean = p.probabilite >= 90.0 && quality != "faible"
+    /** Un pronostic est certifié selon les conditions ngengesport.cd si sa probabilité calculée atteint ou dépasse 80 %. */
+    fun isSure(p: Pick, quality: String): Boolean = p.probabilite >= 80.0 && quality != "faible"
 
     fun marketLabel(p: Pick): String = if (p.marche == "corners") "⛳ Corners" else "🟨 Cartons jaunes"
 
@@ -112,7 +112,7 @@ object ResultParser {
             sb.append("$flag ${marketLabel(pick)} (${targetLabel(pick)}) : ${pick.selection} — ${pick.probabilite.toInt()} %\n")
         }
         if (p.picks.none { isSure(it, p.quality) }) {
-            sb.append("\nAucun pronostic n'atteint 90 %.\n")
+            sb.append("\nAucun pronostic n'atteint 80 %.\n")
         }
         if (p.synthese.isNotBlank()) sb.append('\n').append(p.synthese).append('\n')
         sb.append("\nEstimations statistiques par IA, sans garantie. Les paris comportent un risque de perte (18+).")

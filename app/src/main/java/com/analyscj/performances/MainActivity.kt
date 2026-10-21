@@ -5,14 +5,14 @@ import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -24,7 +24,6 @@ import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.roundToInt
 
 class MainActivity : Activity() {
 
@@ -44,6 +43,8 @@ class MainActivity : Activity() {
     private lateinit var leaguesRow: LinearLayout
     private lateinit var matchesContainer: LinearLayout
     private lateinit var contextInput: EditText
+    private lateinit var matchPreviewTitle: TextView
+    private lateinit var matchPreviewSub: TextView
     private lateinit var analyzeBtn: Button
     private lateinit var statusText: TextView
     private lateinit var resultBox: LinearLayout
@@ -67,12 +68,12 @@ class MainActivity : Activity() {
         AndroidLeague("Premier League", "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "EPL", listOf(
             "Arsenal FC vs Chelsea FC",
             "Liverpool FC vs Manchester City",
-            "Manchester United vs Tottenham"
+            "Manchester United vs Tottenham Hotspur"
         )),
         AndroidLeague("Serie A", "🇮🇹", "Serie A", listOf(
             "Inter Milan vs Juventus Turin",
             "AC Milan vs AS Roma",
-            "Napoli vs Lazio Rome"
+            "SSC Napoli vs SS Lazio"
         )),
         AndroidLeague("Bundesliga", "🇩🇪", "BUN", listOf(
             "Bayern Munich vs Borussia Dortmund",
@@ -87,7 +88,7 @@ class MainActivity : Activity() {
         AndroidLeague("Premier League Portugal", "🇵🇹", "Portugal", listOf(
             "SL Benfica vs FC Porto",
             "Sporting CP vs SC Braga",
-            "Vitória Guimarães vs Boavista"
+            "Vitória Guimarães vs Boavista FC"
         ))
     )
 
@@ -100,7 +101,7 @@ class MainActivity : Activity() {
         window.statusBarColor = bg
         window.navigationBarColor = bg
         buildUi()
-        selectLeague(0)
+        selectLeague(0, changeMatch = true)
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
@@ -146,7 +147,10 @@ class MainActivity : Activity() {
         ).apply { topMargin = dp(top) }
 
     private fun buildUi() {
-        scrollView = ScrollView(this).apply { setBackgroundColor(bg) }
+        scrollView = ScrollView(this).apply {
+            setBackgroundColor(bg)
+        }
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(24), dp(16), dp(32))
@@ -194,22 +198,55 @@ class MainActivity : Activity() {
         // Étape 2 : Affiches du championnat
         val matchCard = cardBox()
         matchCard.addView(label("2. Match du Championnat", 15f, textMain, true))
+        matchCard.addView(label("Touchez un match pour le sélectionner :", 11f, textMuted), matchWrap(2))
         matchesContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         matchCard.addView(matchesContainer, matchWrap(6))
 
-        // Ou saisie manuelle personnalisée
-        matchCard.addView(label("Ou personnaliser le match :", 12f, textMuted), matchWrap(10))
+        // Saisie manuelle personnalisée
+        matchCard.addView(label("Ou saisir un autre match :", 12f, textMuted), matchWrap(10))
         contextInput = EditText(this).apply {
-            hint = "Ex. : PSG vs Marseille, Arbitre Bastien..."
+            hint = "Ex. : PSG vs Marseille, Monaco vs Lyon..."
             setHintTextColor(textMuted)
             setTextColor(textMain)
             textSize = 13f
             minLines = 1
             background = roundBg(Color.parseColor("#090D16"), 8)
             setPadding(dp(10), dp(8), dp(10), dp(8))
+            addTextChangedListener(object : TextWatcher {
+                override fun afterTextChanged(s: Editable?) {
+                    val txt = s?.toString()?.trim() ?: ""
+                    if (txt.isNotBlank()) {
+                        selectedMatchName = txt
+                        updateMatchPreview(txt)
+                    }
+                }
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            })
         }
         matchCard.addView(contextInput, matchWrap(4))
         root.addView(matchCard)
+
+        // Aperçu en direct du match sélectionné
+        val previewCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundBg(Color.parseColor("#182234"), 12)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+        }
+        val pHeader = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        pHeader.addView(label("MATCH SÉLECTIONNÉ :", 11f, yellow, true).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        pHeader.addView(label("≥ 80% PROBA", 10f, green, true).apply {
+            background = roundBg(Color.parseColor("#052e16"), 4)
+            setPadding(dp(6), dp(2), dp(6), dp(2))
+        })
+        previewCard.addView(pHeader)
+        matchPreviewTitle = label(selectedMatchName, 15f, Color.WHITE, true)
+        previewCard.addView(matchPreviewTitle, matchWrap(4))
+        matchPreviewSub = label("Ligue 1 · Cartons Jaunes & Corners", 11f, textMuted)
+        previewCard.addView(matchPreviewSub, matchWrap(2))
+        root.addView(previewCard, matchWrap(10))
 
         // Étape 3 : LE BOUTON DEMANDÉ PAR L'UTILISATEUR "DONNE LES STATS"
         analyzeBtn = button("📊 DONNE LES STATS (≥ 80% PROBA)", Color.parseColor("#EAB308"), Color.parseColor("#020617")).apply {
@@ -217,7 +254,7 @@ class MainActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
             setOnClickListener { startAnalysis() }
         }
-        root.addView(analyzeBtn, matchWrap(14))
+        root.addView(analyzeBtn, matchWrap(12))
 
         statusText = label("", 12f, amber)
         statusText.gravity = Gravity.CENTER
@@ -229,8 +266,25 @@ class MainActivity : Activity() {
         setContentView(scrollView)
     }
 
-    private fun selectLeague(index: Int) {
+    private fun updateMatchPreview(matchName: String) {
+        val curLeague = leaguesList.getOrNull(selectedLeagueIndex)
+        val leagueTitle = curLeague?.name ?: "Championnat"
+        matchPreviewTitle.text = matchName
+        matchPreviewSub.text = "$leagueTitle · Cartons Jaunes & Corners (ngengesport.cd)"
+    }
+
+    private fun selectLeague(index: Int, changeMatch: Boolean = true) {
         selectedLeagueIndex = index
+        val curLeague = leaguesList[index]
+
+        if (changeMatch) {
+            selectedMatchName = curLeague.defaultMatches.firstOrNull() ?: ""
+            contextInput.setText(selectedMatchName)
+        }
+
+        updateMatchPreview(selectedMatchName)
+
+        // Rendu des onglets de ligues
         leaguesRow.removeAllViews()
         for ((idx, lg) in leaguesList.withIndex()) {
             val isSel = idx == index
@@ -241,7 +295,7 @@ class MainActivity : Activity() {
                 background = roundBg(if (isSel) yellow else chip, 8)
                 setPadding(dp(12), dp(8), dp(12), dp(8))
                 setTypeface(typeface, if (isSel) Typeface.BOLD else Typeface.NORMAL)
-                setOnClickListener { selectLeague(idx) }
+                setOnClickListener { selectLeague(idx, changeMatch = true) }
             }
             val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 rightMargin = dp(6)
@@ -249,30 +303,33 @@ class MainActivity : Activity() {
             leaguesRow.addView(btn, lp)
         }
 
-        // Mettre à jour les matchs de la ligue
+        // Mettre à jour les boutons de match de la ligue
         matchesContainer.removeAllViews()
-        val curLeague = leaguesList[index]
         for (m in curLeague.defaultMatches) {
-            val isSel = m == selectedMatchName
-            val mBtn = TextView(this).apply {
-                text = m
-                textSize = 13f
-                setTextColor(if (isSel) yellow else textMain)
-                background = roundBg(if (isSel) Color.parseColor("#0F172A") else Color.parseColor("#182234"), 8)
+            val isSel = m.equals(selectedMatchName, ignoreCase = true)
+            val mCard = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                background = roundBg(if (isSel) Color.parseColor("#172554") else Color.parseColor("#182234"), 8)
                 setPadding(dp(12), dp(10), dp(12), dp(10))
-                setTypeface(typeface, if (isSel) Typeface.BOLD else Typeface.NORMAL)
+
+                val mLabel = label((if (isSel) "✓ " else "") + m, 13f, if (isSel) yellow else textMain, isSel).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                val badge = label(if (isSel) "SÉLECTIONNÉ" else "CHOISIR", 10f, if (isSel) Color.parseColor("#020617") else textMuted, true).apply {
+                    background = roundBg(if (isSel) yellow else chip, 6)
+                    setPadding(dp(8), dp(4), dp(8), dp(4))
+                }
+
+                addView(mLabel)
+                addView(badge)
+
                 setOnClickListener {
                     selectedMatchName = m
                     contextInput.setText(m)
-                    selectLeague(selectedLeagueIndex)
+                    selectLeague(selectedLeagueIndex, changeMatch = false)
                 }
             }
-            matchesContainer.addView(mBtn, matchWrap(4))
-        }
-
-        if (contextInput.text.isNullOrBlank()) {
-            selectedMatchName = curLeague.defaultMatches.firstOrNull() ?: ""
-            contextInput.setText(selectedMatchName)
+            matchesContainer.addView(mCard, matchWrap(4))
         }
     }
 
@@ -328,15 +385,14 @@ class MainActivity : Activity() {
     private fun showHistory() {
         val entries = History.load(this)
         val fmt = SimpleDateFormat("dd/MM HH:mm", Locale.FRANCE)
-
+        val pad = dp(16)
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(12), dp(16), dp(12))
+            setPadding(pad, pad, pad, pad)
         }
 
-        box.addView(label("Historique des Rapprochements", 15f, yellow, true))
         if (entries.isEmpty()) {
-            box.addView(label("Aucune analyse enregistrée. Appuyez sur « Donne les stats ».", 12f, textMuted), matchWrap(8))
+            box.addView(label("Aucune analyse enregistrée pour le moment.", 13f, textMuted))
         }
 
         var dialog: AlertDialog? = null
@@ -390,10 +446,16 @@ class MainActivity : Activity() {
 
                 val parsed = ResultParser.parse(result.finalText)
                 val now = System.currentTimeMillis()
+                val entryTitle = if (parsed != null && parsed.home.isNotBlank() && parsed.away.isNotBlank()) {
+                    "${parsed.home} vs ${parsed.away}"
+                } else {
+                    ctx
+                }
+
                 val entry = Entry(
                     id = now,
                     ts = now,
-                    title = if (parsed != null) ResultParser.title(parsed) else ctx,
+                    title = entryTitle,
                     finalText = result.finalText,
                     extraction = result.extraction,
                     bigData1 = result.bigData1,
@@ -433,14 +495,24 @@ class MainActivity : Activity() {
         val parsed = ResultParser.parse(entry.finalText)
 
         val headerCard = cardBox()
-        headerCard.addView(label("🎯 Rapprochement Validé (≥ 80% Probabilité)", 15f, green, true))
-        headerCard.addView(label("Match : ${entry.title}", 14f, yellow, true))
-        headerCard.addView(label("Conditions ngengesport.cd appliquées · Cartons 90 min & Corners tirés", 11f, textMuted))
+        val titleRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val certBadge = label("🎯 CERTIFIÉ ≥ 80% PROBA", 11f, green, true).apply {
+            background = roundBg(Color.parseColor("#052e16"), 6)
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
+        titleRow.addView(certBadge)
+        headerCard.addView(titleRow)
+
+        val matchTitle = if (parsed != null && parsed.home.isNotBlank()) "${parsed.home} vs ${parsed.away}" else entry.title
+        headerCard.addView(label(matchTitle, 18f, Color.WHITE, true), matchWrap(6))
+
+        val compSub = if (parsed != null && parsed.comp.isNotBlank()) "${parsed.comp} · Conditions ngengesport.cd" else "Rapprochement Statistique"
+        headerCard.addView(label(compSub, 12f, yellow), matchWrap(2))
 
         val copyBtn = button("📋 Copier le Coupon NgengeSport", Color.parseColor("#EAB308"), Color.parseColor("#020617"))
         copyBtn.setOnClickListener {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val text = "🎟️ COUPON NGENGESPORT.CD · ANALYS C&J (≥ 80% PROBA)\nMatch : ${entry.title}\n${entry.finalText}"
+            val text = "🎟️ COUPON NGENGESPORT.CD · ANALYS C&J (≥ 80% PROBA)\nMatch : $matchTitle\n${entry.finalText}"
             cm.setPrimaryClip(ClipData.newPlainText("Coupon NgengeSport", text))
             Toast.makeText(this, "Coupon NgengeSport copié dans le presse-papier !", Toast.LENGTH_SHORT).show()
         }
