@@ -1,0 +1,6 @@
+{
+  "name": "Analyse C&J Performances",
+  "description": "Application d'analyse des cartons jaunes et corners de match de football par croisement multi-IA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
