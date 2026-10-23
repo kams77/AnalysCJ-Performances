@@ -14,6 +14,14 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
 app.use(express.json({ limit: '50mb' }));
 
+// Middleware Anti-Cache strict : force le rechargement immédiat de la dernière version
+app.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // Initialiser Gemini SDK côté serveur
 const ai = process.env.GEMINI_API_KEY
   ? new GoogleGenAI({

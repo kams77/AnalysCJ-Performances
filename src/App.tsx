@@ -238,8 +238,14 @@ export default function App() {
   // Action d'actualisation des données et du calendrier (Bouton Actualiser)
   const handleRefreshData = async () => {
     setIsRefreshing(true);
+    if ('caches' in window) {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch {}
+    }
     try {
-      const res = await fetch('/api/refresh');
+      const res = await fetch(`/api/refresh?t=${Date.now()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.leagues && Array.isArray(data.leagues)) {
@@ -264,7 +270,7 @@ export default function App() {
 
   // Charger les données de championnats depuis le backend
   useEffect(() => {
-    fetch('/api/leagues')
+    fetch(`/api/leagues?t=${Date.now()}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.leagues && Array.isArray(data.leagues)) {
@@ -552,9 +558,12 @@ export default function App() {
               </div>
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-base md:text-lg tracking-tight text-white flex items-center gap-1.5">
-                  Analyse C&J Performances
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="font-extrabold text-base md:text-lg tracking-tight text-white flex items-center gap-2">
+                  <span>Analyse C&J Performances</span>
+                  <span className="px-2 py-0.5 text-[10px] md:text-xs font-black bg-emerald-500 text-slate-950 rounded-md tracking-wider shadow-sm uppercase">
+                    v3.2 FINALE
+                  </span>
                 </h1>
                 <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full">
                   ≥ 80% PROBA
@@ -564,7 +573,7 @@ export default function App() {
                 </span>
               </div>
               <p className="text-xs text-slate-400 hidden sm:block">
-                Moteur de Rapprochement Statistique · Cartons Jaunes & Corners Exclusifs
+                Moteur de Rapprochement Poisson Exact & Value Bet · Cartons Jaunes & Corners
               </p>
             </div>
           </div>

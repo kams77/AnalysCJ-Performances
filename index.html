@@ -1,11 +1,14 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Analyse C&J Performances</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>Analyse C&J Performances (v3.2 Finale)</title>
     <meta name="description" content="Application experte d'analyse des cartons jaunes et corners de football par modélisation Poisson, largeur tactique, game state et conformité ngengesport.cd." />
-    <meta property="og:title" content="Analyse C&J Performances" />
+    <meta property="og:title" content="Analyse C&J Performances (v3.2 Finale)" />
     <meta property="og:description" content="Application experte d'analyse des cartons jaunes et corners de football par modélisation Poisson, largeur tactique, game state et conformité ngengesport.cd." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -17,9 +20,19 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <script>
+      // Purge absolue de tout ancien Service Worker et des caches obsolètes
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var i = 0; i < registrations.length; i++) {
+            registrations[i].unregister();
+          }
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(function(keys) {
+          keys.forEach(function(key) {
+            caches.delete(key);
+          });
         });
       }
     </script>
@@ -29,4 +42,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
