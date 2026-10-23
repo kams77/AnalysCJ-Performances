@@ -345,8 +345,8 @@ export const EfficacyReportModal: React.FC<Props> = ({
                 </a>
 
                 <a
-                  href="/AnalysCJ-v2.2-Autonome.apk"
-                  download="AnalysCJ-v2.2-Autonome.apk"
+                  href="/AnalysCJ-v3.2-Autonome.apk"
+                  download="AnalysCJ-v3.2-Autonome.apk"
                   className="p-4 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500/50 hover:bg-slate-800/40 transition group flex items-start gap-3.5"
                 >
                   <div className="p-3 rounded-lg bg-amber-500/10 text-amber-400 group-hover:scale-105 transition">
@@ -354,13 +354,13 @@ export const EfficacyReportModal: React.FC<Props> = ({
                   </div>
                   <div>
                     <h5 className="text-sm font-bold text-white group-hover:text-amber-300 transition">
-                      APK Autonome Android
+                      APK Autonome Android (v3.2)
                     </h5>
                     <p className="text-xs text-slate-400 mt-0.5">
                       Fichier d'installation native Android sans dépendance externe
                     </p>
                     <span className="text-[10px] text-amber-400 font-mono font-bold mt-2 inline-block">
-                      Télécharger APK Android
+                      Télécharger APK Android (v3.2)
                     </span>
                   </div>
                 </a>
