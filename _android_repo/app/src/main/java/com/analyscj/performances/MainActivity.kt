@@ -163,9 +163,9 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
-        titles.addView(label("Analys C&J Performances", 20f, yellow, true))
-        titles.addView(label("Cartons Jaunes & Corners · ≥ 80% Probabilité", 12f, green, true))
-        titles.addView(label("Conforme conditions ngengesport.cd (Congo RDC)", 11f, textMuted))
+        titles.addView(label("Analys C&J Performances (v3.2)", 20f, yellow, true))
+        titles.addView(label("Cartons Jaunes & Corners · Modèle Poisson ≥ 80%", 12f, green, true))
+        titles.addView(label("Conforme conditions ngengesport.cd (Congo RDC) · Build v3.2", 11f, textMuted))
 
         val historyBtn = button("📚", card, textMain)
         historyBtn.setOnClickListener { showHistory() }
