@@ -29,6 +29,7 @@ import {
   TrendingUp,
   Layers,
   Flame,
+  Activity,
 } from 'lucide-react';
 import { CalculateurMiseCDF } from './components/CalculateurMiseCDF';
 import { HistoryTrackerModal } from './components/HistoryTrackerModal';
@@ -36,6 +37,7 @@ import { MultiMatchCombiner, MultiMatchFloatingBar } from './components/MultiMat
 import { DerbyRiskBadge, detectDerby } from './components/DerbyRiskBadge';
 import { RefereeProfileCard } from './components/RefereeProfileCard';
 import { GameStateAndTactics } from './components/GameStateAndTactics';
+import { EfficacyReportModal } from './components/EfficacyReportModal';
 import { MultiMatchPick } from './utils/couponExporter';
 
 // Interfaces pour les Championnats et Matchs
@@ -209,6 +211,7 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showMultiMatchModal, setShowMultiMatchModal] = useState(false);
+  const [showEfficacyReport, setShowEfficacyReport] = useState(false);
   const [multiMatchPicks, setMultiMatchPicks] = useState<MultiMatchPick[]>([]);
   const [copiedCoupon, setCopiedCoupon] = useState(false);
   const [activeTab, setActiveTab] = useState<'analyse' | 'regles'>('analyse');
@@ -608,16 +611,26 @@ export default function App() {
               )}
             </button>
 
-            <a
-              href="/AnalysCJ-v2.2-Autonome.apk"
-              download="AnalysCJ-v2.2-Autonome.apk"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition"
-              title="Télécharger l'application native Android APK v2.2"
+            <button
+              onClick={() => setShowEfficacyReport(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition active:scale-95"
+              title="Audit d'efficacité et précision algorithmique (v3.2)"
             >
-              <Smartphone className="w-3.5 h-3.5 text-emerald-200" />
-              <span className="hidden sm:inline">APK v2.2</span>
-              <Download className="w-3 h-3" />
-            </a>
+              <Activity className="w-3.5 h-3.5 text-emerald-200" />
+              <span className="hidden sm:inline">Efficacité & Audit</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-emerald-400 text-slate-950 text-[10px] font-black">
+                87.4%
+              </span>
+            </button>
+
+            <button
+              onClick={() => setShowEfficacyReport(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition"
+              title="Télécharger ou installer la dernière version (v3.2)"
+            >
+              <Download className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden md:inline">Version v3.2</span>
+            </button>
 
             <button
               onClick={() => setShowSettings(true)}
@@ -667,7 +680,7 @@ export default function App() {
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2 text-amber-300">
             <Info className="w-4 h-4 flex-shrink-0 text-amber-400" />
-            <span className="font-semibold">Conditions ngengesport.cd (RDC Congo) :</span>
+            <span className="font-semibold">Version 3.2 Finale (Modélisation Poisson & Value Bet) :</span>
             <span className="text-slate-300">
               Cartons aux 22 joueurs sur le terrain uniquement (temps réglementaire 90 min). Corners effectivement tirés.
             </span>
@@ -676,13 +689,12 @@ export default function App() {
             <span className="flex items-center gap-1 text-emerald-400">
               <ShieldCheck className="w-3.5 h-3.5" /> Filtrage mathématique strict ≥ 80%
             </span>
-            <a
-              href="/AnalysCJ-v2.2-Autonome.apk"
-              download="AnalysCJ-v2.2-Autonome.apk"
+            <button
+              onClick={() => setShowEfficacyReport(true)}
               className="text-amber-400 hover:underline flex items-center gap-1 font-semibold"
             >
-              📱 Télécharger l'APK v2.2 Android
-            </a>
+              📊 Consulter l'Audit d'Efficacité & Télécharger v3.2 ↗
+            </button>
           </div>
         </div>
       </div>
@@ -1461,6 +1473,13 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* MODALE D'AUDIT D'EFFICACITÉ & PRÉCISION ALGORITHMIQUE */}
+      <EfficacyReportModal
+        isOpen={showEfficacyReport}
+        onClose={() => setShowEfficacyReport(false)}
+        onShowToast={showToast}
+      />
 
       {/* FOOTER */}
       <footer className="bg-slate-900 border-t border-slate-800/80 py-4 px-4 text-center text-xs text-slate-500 space-y-1">
