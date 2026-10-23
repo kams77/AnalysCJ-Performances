@@ -35,6 +35,7 @@ import { HistoryTrackerModal } from './components/HistoryTrackerModal';
 import { MultiMatchCombiner, MultiMatchFloatingBar } from './components/MultiMatchCombiner';
 import { DerbyRiskBadge, detectDerby } from './components/DerbyRiskBadge';
 import { RefereeProfileCard } from './components/RefereeProfileCard';
+import { GameStateAndTactics } from './components/GameStateAndTactics';
 import { MultiMatchPick } from './utils/couponExporter';
 
 // Interfaces pour les Championnats et Matchs
@@ -99,6 +100,11 @@ export interface PronosticItem {
   regle_ngenge?: string;
   justification: string;
   facteurs: string[];
+  poisson_lambda?: number;
+  poisson_exact?: string;
+  proba_bookmaker?: number;
+  value_net?: number;
+  is_value_bet?: boolean;
 }
 
 export interface RapprochementData {
@@ -122,6 +128,18 @@ export interface RapprochementData {
     severite: string;
     impact_rapprochement: string;
   };
+  largeur_tactique?: {
+    domicile_ailiers_score: number;
+    exterieur_ailiers_score: number;
+    style_global: string;
+    impact_corners: string;
+  };
+  scenarios_match?: {
+    nom: string;
+    probabilite: string;
+    impact_corners: string;
+    impact_cartons: string;
+  }[];
 }
 
 export interface ParsedAnalysis {
@@ -1181,6 +1199,15 @@ export default function App() {
                 leagueAvgYellows={currentLeague?.leagueMoyenneCartons}
               />
 
+              {/* MODÈLE QUANTITATIF POISSON, LARGEUR TACTIQUE & SIMULATEUR GAME STATE */}
+              {analysisResult.rapprochement_statistique && (
+                <GameStateAndTactics
+                  rapprochement={analysisResult.rapprochement_statistique}
+                  homeTeam={analysisResult.match.domicile}
+                  awayTeam={analysisResult.match.exterieur}
+                />
+              )}
+
               {/* LISTE DES PRONOSTICS STRICTEMENT >= 80% DE PROBABILITÉ */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -1207,16 +1234,23 @@ export default function App() {
                       >
                         <div>
                           {/* En-tête prono */}
-                          <div className="flex items-center justify-between mb-2">
-                            <span
-                              className={`text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                                isYellowCard
-                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              }`}
-                            >
-                              {isYellowCard ? '🟨 CARTONS JAUNES' : '🚩 CORNERS'}
-                            </span>
+                          <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span
+                                className={`text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                                  isYellowCard
+                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                }`}
+                              >
+                                {isYellowCard ? '🟨 CARTONS JAUNES' : '🚩 CORNERS'}
+                              </span>
+                              {prono.is_value_bet && (
+                                <span className="text-[10px] font-black tracking-wide px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 flex items-center gap-1 shadow-sm">
+                                  ⭐ Value Bet (+{prono.value_net}% Edge)
+                                </span>
+                              )}
+                            </div>
 
                             <div className="flex items-center gap-1.5">
                               {prono.cote_ngenge && (
@@ -1234,6 +1268,25 @@ export default function App() {
                           <h5 className="text-base font-black text-white tracking-tight mb-1">
                             {prono.selection}
                           </h5>
+
+                          {/* Métriques quantitatives Poisson exact & Bookmaker */}
+                          {prono.poisson_exact && (
+                            <div className="flex flex-wrap items-center gap-1.5 mb-2 text-[10px] font-mono">
+                              <span className="bg-cyan-950/50 text-cyan-300 border border-cyan-800/60 px-2 py-0.5 rounded">
+                                Poisson : <strong className="text-white">{prono.poisson_exact}</strong>
+                              </span>
+                              {prono.poisson_lambda && (
+                                <span className="bg-slate-950/70 text-slate-400 border border-slate-800 px-2 py-0.5 rounded">
+                                  λ = <strong className="text-amber-300">{prono.poisson_lambda}</strong>
+                                </span>
+                              )}
+                              {prono.proba_bookmaker && (
+                                <span className="bg-slate-950/70 text-slate-400 border border-slate-800 px-2 py-0.5 rounded">
+                                  Cote implicite : <strong className="text-slate-300">{prono.proba_bookmaker}%</strong>
+                                </span>
+                              )}
+                            </div>
+                          )}
 
                           {/* Règle NgengeSport */}
                           {prono.regle_ngenge && (
