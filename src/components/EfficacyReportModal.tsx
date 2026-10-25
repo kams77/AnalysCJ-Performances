@@ -17,14 +17,57 @@ import {
   Activity,
   Smartphone,
 } from 'lucide-react';
+import type { HistoryEntry } from '../App';
 
 interface Props {
+  history?: HistoryEntry[];
   isOpen: boolean;
   onClose: () => void;
   onShowToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
+// KPI calculés uniquement à partir des résultats réellement saisis dans l'historique
+function computeRealStats(history: HistoryEntry[]) {
+  const evaluated = history.filter((h) => h.status === 'success' || h.status === 'failure');
+  const won = evaluated.filter((h) => h.status === 'success').length;
+  let brierSum = 0;
+  let brierN = 0;
+  let stakeSum = 0;
+  let netSum = 0;
+  for (const h of evaluated) {
+    const outcome = h.status === 'success' ? 1 : 0;
+    const stake = h.stakeCDF || 0;
+    let proba: number | null = null;
+    let cote = 0;
+    try {
+      const parsed = JSON.parse(h.finalText);
+      const sel = parsed?.ticket_ngengesport?.selections_80plus;
+      if (Array.isArray(sel) && sel.length > 0) {
+        proba = sel.slice(0, 2).reduce((acc: number, x: any) => acc * (parseFloat(x.probabilite) / 100), 1);
+      }
+      cote = Number(parsed?.ticket_ngengesport?.cote_totale_combinee) || 0;
+    } catch {
+      /* historique illisible : ignoré pour la calibration */
+    }
+    if (proba !== null && !Number.isNaN(proba)) {
+      brierSum += (proba - outcome) ** 2;
+      brierN += 1;
+    }
+    if (stake > 0 && cote > 0) {
+      stakeSum += stake;
+      netSum += outcome ? stake * cote - stake : -stake;
+    }
+  }
+  return {
+    evaluated: evaluated.length,
+    winRate: evaluated.length > 0 ? (won / evaluated.length) * 100 : null,
+    brier: brierN >= 10 ? brierSum / brierN : null,
+    roi: stakeSum > 0 ? (netSum / stakeSum) * 100 : null,
+  };
+}
+
 export const EfficacyReportModal: React.FC<Props> = ({
+  history = [],
   isOpen,
   onClose,
   onShowToast,
@@ -32,6 +75,9 @@ export const EfficacyReportModal: React.FC<Props> = ({
   const [activeTab, setActiveTab] = useState<'audit' | 'math' | 'download'>('audit');
 
   if (!isOpen) return null;
+
+  const stats = computeRealStats(history);
+  const fmt = (v: number | null, d = 1, suffix = '%') => (v === null ? '—' : `${v.toFixed(d)}${suffix}`);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 md:p-4 animate-in fade-in duration-200">
@@ -52,7 +98,7 @@ export const EfficacyReportModal: React.FC<Props> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Évaluation scientifique, calibration Poisson et conformité bookmaker ngengesport.cd
+                Résultats réels, calibration du modèle et règles ngengesport.cd
               </p>
             </div>
           </div>
@@ -86,7 +132,7 @@ export const EfficacyReportModal: React.FC<Props> = ({
             }`}
           >
             <Zap className="w-3.5 h-3.5" />
-            <span>Moteur Mathématique (Poisson & Edge)</span>
+            <span>Moteur Mathématique</span>
           </button>
           <button
             onClick={() => setActiveTab('download')}
@@ -105,54 +151,49 @@ export const EfficacyReportModal: React.FC<Props> = ({
         <div className="p-4 md:p-6 overflow-y-auto space-y-6 flex-1">
           {activeTab === 'audit' && (
             <div className="space-y-6">
-              {/* CARTES KPI */}
+              {/* AVERTISSEMENT */}
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 leading-relaxed">
+                Ces indicateurs sont calculés <strong>uniquement</strong> à partir des résultats que vous avez saisis
+                dans l'historique. Aucun taux de réussite n'est garanti : les cartons et les corners restent très
+                aléatoires et vous pouvez perdre votre mise.
+              </div>
+
+              {/* CARTES KPI RÉELS */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-slate-950 p-3.5 rounded-xl border border-emerald-500/30 text-center">
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">
-                    Taux Global Réussi (≥80%)
-                  </span>
+                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Tickets terminés</span>
                   <span className="text-2xl md:text-3xl font-black text-emerald-400 font-mono block mt-1">
-                    87.4%
+                    {stats.evaluated}
                   </span>
-                  <span className="text-[10px] text-emerald-400/80 font-medium">
-                    Conformité réelle observée
-                  </span>
+                  <span className="text-[10px] text-emerald-400/80 font-medium">Résultats saisis</span>
                 </div>
 
                 <div className="bg-slate-950 p-3.5 rounded-xl border border-amber-500/30 text-center">
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">
-                    Précision Cartons Jaunes
-                  </span>
+                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Taux de réussite réel</span>
                   <span className="text-2xl md:text-3xl font-black text-amber-400 font-mono block mt-1">
-                    88.6%
+                    {fmt(stats.winRate)}
                   </span>
                   <span className="text-[10px] text-amber-400/80 font-medium">
-                    Joueurs en jeu (90 min)
+                    {stats.evaluated < 30 ? 'Échantillon trop petit (< 30)' : 'Tickets gagnés / terminés'}
                   </span>
                 </div>
 
                 <div className="bg-slate-950 p-3.5 rounded-xl border border-cyan-500/30 text-center">
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">
-                    Précision Corners
-                  </span>
+                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Brier Score</span>
                   <span className="text-2xl md:text-3xl font-black text-cyan-400 font-mono block mt-1">
-                    86.1%
+                    {fmt(stats.brier, 3, '')}
                   </span>
                   <span className="text-[10px] text-cyan-400/80 font-medium">
-                    Corners effectivement tirés
+                    {stats.brier === null ? 'Il faut au moins 10 tickets' : 'Plus bas = mieux calibré'}
                   </span>
                 </div>
 
                 <div className="bg-slate-950 p-3.5 rounded-xl border border-purple-500/30 text-center">
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">
-                    Edge Moyen (Value Bet)
-                  </span>
+                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Rendement (ROI)</span>
                   <span className="text-2xl md:text-3xl font-black text-purple-400 font-mono block mt-1">
-                    +13.2%
+                    {fmt(stats.roi)}
                   </span>
-                  <span className="text-[10px] text-purple-300/80 font-medium">
-                    Surperformance vs cote bookmaker
-                  </span>
+                  <span className="text-[10px] text-purple-300/80 font-medium">Gain net / mises engagées</span>
                 </div>
               </div>
 
@@ -160,18 +201,18 @@ export const EfficacyReportModal: React.FC<Props> = ({
               <div className="bg-slate-950/70 p-4 rounded-xl border border-slate-800 space-y-3">
                 <h4 className="text-sm font-bold text-white flex items-center gap-2">
                   <Target className="w-4 h-4 text-emerald-400" />
-                  Pourquoi l'algorithme est hautement performant en conditions réelles ?
+                  Comment le modèle fonctionne
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-300">
                   <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 space-y-1">
                     <span className="font-bold text-emerald-300 flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                      1. Élimination des Fausses Moyennes
+                      1. Au-delà de la moyenne simple
                     </span>
                     <p className="text-slate-400 leading-relaxed">
-                      La plupart des parieurs se fient à la moyenne simple. L'application utilise la
-                      distribution discrète de Poisson combinée au profil de l'arbitre et au rythme réel
-                      de jeu pour calculer la probabilité cumulative exacte.
+                      La plupart des parieurs se fient à la moyenne simple. L'application utilise une loi
+                      binomiale négative (qui tient compte de la variabilité réelle des cartons et des corners)
+                      combinée au profil de l'arbitre pour estimer une probabilité.
                     </p>
                   </div>
 
@@ -204,32 +245,16 @@ export const EfficacyReportModal: React.FC<Props> = ({
                     </span>
                     <p className="text-slate-400 leading-relaxed">
                       Le match n'est pas linéaire. L'application simule 3 scénarios (0-0 bloc bas, avantage précoce, transition rapide)
-                      pour garantir que le seuil de 80% résiste quel que soit le déroulement du match.
+                      pour illustrer l'effet du déroulement du match sur les estimations.
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* CALIBRATION STATISTIQUE : BRIER SCORE */}
-              <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-950/20 via-slate-900 to-slate-900 border border-emerald-500/30 flex flex-col md:flex-row items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wide">
-                      Indice de Calibration Actuarielle
-                    </span>
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold">
-                      Brier Score = 0.089
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-300 max-w-xl">
-                    Un Brier Score inférieur à 0.10 confirme que les probabilités annoncées à ≥80%
-                    correspondent dans 87.4% des cas à des gains réels vérifiés sur les scores terminés.
-                  </p>
-                </div>
-                <div className="flex-shrink-0 text-right font-mono">
-                  <span className="text-xs text-slate-400 block">Indice de Confiance Global</span>
-                  <span className="text-xl font-black text-emerald-400">9.4 / 10 EXCELLENT</span>
-                </div>
+              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-300 leading-relaxed">
+                <span className="font-bold text-slate-100 block mb-1">Comment lire ces chiffres</span>
+                Le Brier Score mesure l'écart entre la probabilité annoncée et le résultat réel (0 = parfait,
+                0,25 = équivalent à lancer une pièce). Il n'a de sens qu'avec un nombre suffisant de tickets terminés.
               </div>
             </div>
           )}
@@ -238,7 +263,7 @@ export const EfficacyReportModal: React.FC<Props> = ({
             <div className="space-y-4">
               <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
                 <h4 className="text-sm font-bold text-emerald-400 font-mono">
-                  1. Formule de Poisson Discrète Exacte
+                  1. Loi binomiale négative (surdispersion)
                 </h4>
                 <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 font-mono text-xs text-slate-200">
                   <p className="text-cyan-300 font-bold mb-1">
@@ -249,8 +274,9 @@ export const EfficacyReportModal: React.FC<Props> = ({
                   </p>
                 </div>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Contrairement aux calculs linéaires basiques, la loi de Poisson prend en compte la rareté
-                  et l'indépendance des événements discrets (corners et cartons) durant les 90 minutes.
+                  La loi de Poisson suppose variance = moyenne ; or cartons et corners varient davantage.
+                  Le moteur utilise donc une loi binomiale négative (variance = moyenne × facteur de dispersion),
+                  plus prudente. Le résultat reste une estimation.
                 </p>
               </div>
 
@@ -260,15 +286,15 @@ export const EfficacyReportModal: React.FC<Props> = ({
                 </h4>
                 <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 font-mono text-xs text-slate-200">
                   <p className="text-amber-300 font-bold mb-1">
-                    Edge (%) = P_réelle - (1 / Cote_Bookmaker × 100)
+                    Edge (pts) = P_estimée - (1 / Cote_saisie × 100)
                   </p>
                   <p className="text-slate-400">
-                    Si Edge ≥ +10% → Badge ⭐ Value Bet décerné avec espérance mathématique positive (EV+).
+                    Si Edge ≥ +5 pts avec une cote que VOUS avez saisie → badge ⭐ Value Bet.
                   </p>
                 </div>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Cela permet non seulement de gagner les paris avec une régularité extrême, mais aussi de
-                  battre la marge bénéficiaire (*overround*) imposée par ngengesport.cd.
+                  Sans cote réelle saisie, aucune valeur n'est calculée : l'application affiche seulement la cote
+                  équitable (sans marge). Une probabilité estimée ne garantit jamais un gain.
                 </p>
               </div>
 
@@ -291,11 +317,11 @@ export const EfficacyReportModal: React.FC<Props> = ({
                 <div className="flex items-center gap-2 mb-2">
                   <Sparkles className="w-5 h-5 text-emerald-400" />
                   <h4 className="text-sm font-bold text-white">
-                    Version 3.2 Finale (Build Officiel Certifié)
+                    Version 3.2 Finale
                   </h4>
                 </div>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Cette version intègre tous les modèles quantitatifs Poisson, le simulateur Game State,
+                  Cette version intègre le modèle statistique, le simulateur Game State,
                   le calculateur de mise CDF, l'export de coupon HD/PDF, le combiné multi-matchs et le suivi réel des scores.
                 </p>
               </div>
@@ -408,7 +434,7 @@ export const EfficacyReportModal: React.FC<Props> = ({
         {/* PIED DE MODALE */}
         <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between flex-shrink-0">
           <span className="text-xs text-slate-500">
-            Analyse C&J Performances • Certifié ngengesport.cd (Kinshasa, RDC)
+            Analyse C&J Performances • Estimations statistiques, aucune garantie • 18+
           </span>
           <button
             onClick={onClose}

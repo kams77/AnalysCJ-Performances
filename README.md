@@ -1,39 +1,29 @@
-# Analyse C&J Performances (v3.2 Finale)
-> **Application experte d'analyse prédictive et de modélisation quantitative des Cartons Jaunes et Corners pour le football.**
-> **Certifiée conforme aux règles officielles de ngengesport.cd (Kinshasa, RDC) • Filtrage garanti ≥ 80% de probabilité.**
+# Analyse C&J Performances (v3.3)
+> **Application d'estimation statistique des Cartons Jaunes et Corners pour le football.**
+> Règles de comptage alignées sur ngengesport.cd (Kinshasa, RDC). Réservé aux personnes majeures (18+).
+
+> ⚠️ **Aucun gain n'est garanti.** Les probabilités affichées sont des *estimations* issues d'un modèle simple.
+> Les cartons et les corners sont des événements très aléatoires. Ne pariez jamais plus que ce que vous pouvez perdre.
 
 ---
 
-## 🔬 Analyse de l'Efficacité Algorithmique & Précision
+## 🔬 Comment fonctionne le moteur
 
-L'application **Analyse C&J Performances v3.2** s'appuie sur une infrastructure mathématique éprouvée conçue pour éliminer les biais des parieurs et battre la marge des bookmakers :
+1. **Loi binomiale négative** (au lieu de Poisson pur) : cartons et corners varient plus que leur moyenne.
+   Pour une espérance λ et un facteur de dispersion φ (variance = λ·φ, φ = 1,25 cartons / 1,35 corners) :
+   $$P(X \ge k) = 1 - \sum_{i=0}^{k-1} \binom{i+r-1}{i} (1-q)^r q^i,\quad r = \frac{\lambda}{\varphi-1}$$
+2. **Aucune probabilité n'est gonflée** : la valeur affichée est celle du calcul. Seules les sélections
+   ≥ 80 % sont retenues ; si aucune n'y arrive, l'application le dit et déconseille de parier.
+3. **Largeur tactique et sévérité de l'arbitre** ajustent λ (heuristiques simples, à valider sur vos données).
+4. **Cotes** : l'application affiche la *cote équitable* (100 / probabilité). Le *Value Bet* n'est calculé que si
+   vous saisissez la cote réelle (`cotes` dans la requête `/api/analyze`, clé `marché:cible:seuil`, ex. `corners:match:8.5`).
+5. **L'IA (Gemini) ne rédige que la synthèse** ; elle ne produit ni probabilité ni cote.
+6. **Indicateurs de performance** (onglet « Audit ») : calculés uniquement depuis les résultats que vous saisissez
+   dans l'historique (taux de réussite, Brier score, ROI). Ils s'affichent « — » tant que les données manquent.
 
-| Indicateur Clé | Valeur Mesurée | Benchmark / Règle |
-|---|---|---|
-| **Taux de Réussite Global Réel** | **87.4%** | Sur sélections certifiées ≥ 80% |
-| **Précision Cartons Jaunes** | **88.6%** | Temps réglementaire (90 min), joueurs actifs sur le terrain |
-| **Précision Corners** | **86.1%** | Corners effectivement tirés et mis en jeu |
-| **Brier Score (Calibration)** | **0.089** | Seuil d'excellence internationale (< 0.10) |
-| **Edge Moyen (Value Bet)** | **+13.2%** | Écart positif moyen par rapport à la cote bookmaker |
-
-### Les 4 Piliers Mathématiques & Tactiques du Moteur :
-1. **Loi de Poisson Discrète Exacte** :
-   Calcul cumulatif rigoureux :
-   $$P(X \ge k) = 1 - \sum_{i=0}^{k-1} \frac{\lambda^i e^{-\lambda}}{i!}$$
-   L'espérance $\lambda$ est modélisée spécifiquement pour chaque équipe selon la localisation (domicile/extérieur), la rigueur de l'arbitre et le tempo du match.
-
-2. **Indice de Largeur Tactique & Profil Ailiers** :
-   Plus de 80% des corners résultent de centres détournés ou de duels 1 contre 1 excentrés. L'algorithme calcule le score d'utilisation des ailes (+1.4 à +2.8 corners pour les équipes à ailiers percutants comme le PSG, le Real Madrid, Liverpool ou le Bayern).
-
-3. **Simulateur Dynamique d'États de Match (*Game State*)** :
-   Modélisation de 3 scénarios réalistes :
-   - *Bloc Bas & Score Serré (0-0 ou 1-0)* : Siège de surface (+1.2 corners, +0.8 carton sous tension).
-   - *Avantage Précoce du Favori* : Temporisation et gestion (-0.5 corners).
-   - *Transition Rapide & Perte d'Équilibre* : Contre-attaques directes et fautes d'antijeu.
-
-4. **Détection Mathématique de *Value Bet*** :
-   $$\text{Edge (\%)} = P_{\text{réelle}} - \left(\frac{1}{\text{Cote}} \times 100\right)$$
-   Dès que l'écart dépasse +10%, la sélection reçoit le badge **⭐ Value Bet**, garantissant une espérance de gain mathématiquement positive (+EV).
+### Limites connues
+- Les moyennes d'équipes proviennent d'une base statique ; un match absent utilise des valeurs par défaut.
+- Le modèle n'a pas été validé sur un historique de résultats externe.
 
 ---
 
@@ -105,18 +95,18 @@ Ouvrez ensuite votre navigateur sur **http://localhost:3000**.
 
 ---
 
-## 📋 Nouveautés de la Version 3.2 Finale
-- **Moteur Actuariel Poisson Discret** avec espérance $\lambda$ affichée.
+## 📋 Fonctionnalités
+- **Moteur binomial négatif** avec espérance $\lambda$ affichée et probabilités non gonflées.
 - **Simulateur Game State & Analyse de Largeur Tactique**.
-- **Détecteur de Value Bet** avec calcul de marge nette.
+- **Value Bet** calculé à partir de la cote réelle saisie.
 - **Calculateur de mise en Francs Congolais (CDF)** avec conversion automatique USD.
 - **Exportation HD de coupons** en Image (.png) et PDF pour WhatsApp et Telegram.
 - **Suivi des Résultats Terminés** avec calcul automatique des gains réels et du taux de réussite.
 - **Panier Multi-Matchs** pour générer des combinés géants (2 à 5 matchs).
 - **Détecteur de Derbys et Alertes Risque**.
 - **Fiche Profil Arbitre Officiel** avec taux de cartons par mi-temps et sévérité.
-- **Audit de Précision Algorithmique** consultable en 1 clic dans l'interface.
+- **Audit basé sur vos résultats réels** (taux de réussite, Brier, ROI).
 
 ---
 
-*Avertissement : Les estimations statistiques sont données à titre analytique conformément aux règles de ngengesport.cd. Réservé aux personnes majeures (18+).*
+*Avertissement : estimations statistiques à titre indicatif, sans garantie de résultat. Réservé aux personnes majeures (18+).*

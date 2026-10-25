@@ -8,7 +8,7 @@ import java.util.concurrent.Executors
  *  - Concentration EXCLUSIVE : CARTONS JAUNES & CORNERS (Plus ou Moins).
  *  - Respect strict des conditions de ngengesport.cd (RDC Congo).
  *  - Extraction dynamique et exacte des équipes (aucun nom d'équipe dupliqué ou répété).
- *  - Filtrage garanti à probabilité calculée ≥ 80%.
+ *  - Filtre à probabilité estimée ≥ 80 % (estimation, aucune garantie).
  */
 class Analyzer(
     private val prefs: Prefs,
@@ -465,6 +465,142 @@ class Analyzer(
         }
     }
 
+    // ---- Moteur autonome honnête : binomiale négative, aucun plancher, aucune cote inventée ----
+    private fun negBinOver(mean: Double, threshold: Double, phi: Double): Int {
+        if (mean <= 0.0) return 1
+        val minK = Math.floor(threshold).toInt() + 1
+        val r = mean / (phi - 1.0)
+        val q = mean / (r + mean)
+        var pmf = Math.pow(1.0 - q, r)
+        var cdf = 0.0
+        for (i in 0 until minK) {
+            cdf += pmf
+            pmf *= ((i + r) / (i + 1.0)) * q
+        }
+        return Math.round((1.0 - cdf) * 100.0).toInt().coerceIn(1, 99)
+    }
+
+    private class Pick(
+        val marche: String, val cible: String, val selection: String,
+        val threshold: Double, val lambda: Double, val phi: Double, val regle: String
+    ) {
+        var proba: Int = 0
+        val coteEquitable: Double get() = Math.round(10000.0 / proba) / 100.0
+    }
+
+    private fun runAutonomous(m: ParsedMatch): Result {
+        val home = m.home
+        val away = m.away
+        val ref = m.referee
+        val hp = m.homeProfile
+        val ap = m.awayProfile
+        val corners = Math.round((hp.avgCornersFor + ap.avgCornersFor) * 10.0) / 10.0
+        val yellows = Math.round((hp.avgYellowsFor + ap.avgYellowsFor + (ref.avgYellows - 4.2) * 0.4) * 10.0) / 10.0
+        val awayYellows = Math.max(0.1, ap.avgYellowsFor + (ref.avgYellows - 4.2) * 0.2)
+        val regleCj = "Seuls les cartons aux joueurs sur le terrain (90 min) comptent."
+        val regleCo = "Seuls les corners effectivement tirés comptent."
+
+        val candidates = listOf(
+            Pick("cartons_jaunes", "match", "Plus de 3,5 Cartons Jaunes Match", 3.5, yellows, 1.25, regleCj),
+            Pick("cartons_jaunes", "match", "Plus de 2,5 Cartons Jaunes Match", 2.5, yellows, 1.25, regleCj),
+            Pick("corners", "match", "Plus de 8,5 Corners Match", 8.5, corners, 1.35, regleCo),
+            Pick("corners", "match", "Plus de 7,5 Corners Match", 7.5, corners, 1.35, regleCo),
+            Pick("corners", "domicile", "Corners $home Plus de 4,5", 4.5, hp.avgCornersFor, 1.35, regleCo),
+            Pick("cartons_jaunes", "exterieur", "Cartons Jaunes $away Plus de 1,5", 1.5, awayYellows, 1.25, regleCj)
+        )
+        candidates.forEach { it.proba = negBinOver(it.lambda, it.threshold, it.phi) }
+        val retained = candidates.filter { it.proba >= 80 }.sortedByDescending { it.proba }
+        val rejected = candidates.filter { it.proba < 80 }
+
+        val pronos = org.json.JSONArray()
+        for (c in retained) {
+            val k = Math.floor(c.threshold).toInt() + 1
+            pronos.put(org.json.JSONObject().apply {
+                put("marche", c.marche)
+                put("cible", c.cible)
+                put("selection", c.selection)
+                put("probabilite", c.proba)
+                put("cote_ngenge", c.coteEquitable)
+                put("cote_estimee", true)
+                put("conforme_ngenge", true)
+                put("regle_ngenge", c.regle)
+                put("justification", "Espérance λ=${Math.round(c.lambda * 10.0) / 10.0}. Estimation par loi binomiale négative.")
+                put("facteurs", org.json.JSONArray(listOf(
+                    "P(X ≥ $k) estimée à ${c.proba} % (estimation, pas une garantie)",
+                    "Cote équitable sans marge : @${c.coteEquitable} (comparez à la cote réelle du bookmaker)",
+                    "Arbitre : ${ref.name} (${ref.avgYellows} cartons/m)"
+                )))
+            })
+        }
+        val sel = org.json.JSONArray()
+        for (c in retained.take(2)) {
+            sel.put(org.json.JSONObject().apply {
+                put("marche", if (c.marche == "cartons_jaunes") "Cartons Jaunes" else "Corners")
+                put("choix", c.selection)
+                put("cote_estimee", c.coteEquitable)
+                put("probabilite", "${c.proba}%")
+                put("conditions", c.regle)
+            })
+        }
+        val combined = retained.take(2).fold(1.0) { acc, c -> acc * c.coteEquitable }
+        val avertissement = when {
+            retained.isEmpty() -> "Aucune sélection n'atteint 80 % : mieux vaut ne pas parier sur ce match."
+            !m.fromDatabase -> "Équipes absentes de la base : valeurs par défaut utilisées, fiabilité réduite."
+            else -> ""
+        }
+        val json = org.json.JSONObject().apply {
+            put("match", org.json.JSONObject().apply {
+                put("domicile", home); put("exterieur", away)
+                put("competition", m.competition); put("date", "Jour de match")
+                put("stade", "Stade officiel"); put("arbitre", ref.name)
+            })
+            put("qualite_donnees", if (m.fromDatabase) "base_statique" else "valeurs_par_defaut")
+            put("rapprochement_statistique", org.json.JSONObject().apply {
+                put("methode", "Binomiale négative (surdispersion)")
+                put("seuil_garanti", "Filtre ≥ 80 % de probabilité estimée (aucune garantie de résultat)")
+                put("avertissement", avertissement)
+                put("corners_attendus_total", corners)
+                put("cartons_attendus_total", yellows)
+                put("stats_domicile", org.json.JSONObject().apply {
+                    put("equipe", home); put("corners_marques_moy", hp.avgCornersFor); put("cartons_jaunes_recus_moy", hp.avgYellowsFor)
+                })
+                put("stats_exterieur", org.json.JSONObject().apply {
+                    put("equipe", away); put("corners_marques_moy", ap.avgCornersFor); put("cartons_jaunes_recus_moy", ap.avgYellowsFor)
+                })
+                put("arbitre_analyse", org.json.JSONObject().apply {
+                    put("nom", ref.name); put("moyenne_cartons_jaunes", "${ref.avgYellows} cartons/m"); put("severite", ref.severity)
+                })
+            })
+            put("pronostics", pronos)
+            put("ticket_ngengesport", org.json.JSONObject().apply {
+                put("bookmaker", "ngengesport.cd (Congo RDC)")
+                put("intitule", "Coupon Cartons & Corners : $home vs $away")
+                put("selections_80plus", sel)
+                put("cote_totale_combinee", Math.round(combined * 100.0) / 100.0)
+                put("cotes_estimees", true)
+                put("taux_confiance", "Estimation statistique, aucune garantie. Ne misez que ce que vous pouvez perdre.")
+            })
+            put("synthese", if (retained.isEmpty())
+                "Aucune sélection n'atteint 80 % de probabilité estimée pour $home vs $away. Il est préférable de s'abstenir."
+            else
+                "${retained.size} sélection(s) dépassent 80 % de probabilité estimée pour $home vs $away. Ce sont des estimations, pas des certitudes.")
+            put("donnees_manquantes", org.json.JSONArray())
+        }.toString()
+
+        val extraction = "[ESTIMATION STATISTIQUE]\n• Championnat : ${m.competition}\n• Affiche : $home vs $away\n" +
+            "• Corners attendus : $corners | Cartons attendus : $yellows\n" +
+            "• Filtre : probabilité estimée ≥ 80 % (aucune garantie).\n" +
+            "• Écartées (< 80 %) : " + (if (rejected.isEmpty()) "aucune" else rejected.joinToString { "${it.selection} (${it.proba} %)" })
+        return Result(
+            finalText = json,
+            extraction = extraction,
+            bigData1 = "",
+            bigData2 = "",
+            notes = listOf("Moteur autonome : estimations, aucune garantie de résultat.") +
+                (if (avertissement.isNotEmpty()) listOf(avertissement) else emptyList())
+        )
+    }
+
     fun run(imagesBase64: List<String>, userContext: String): Result {
         val notes = mutableListOf<String>()
 
@@ -475,196 +611,14 @@ class Analyzer(
         val comp = matchInfo.competition
         val ref = matchInfo.referee
 
-        // Mode Autonome Déterministe certifié ngengesport.cd (par défaut ou si clé Claude absente)
+        // Mode autonome (aucune clé Claude) : estimation statistique locale, sans garantie.
         if (prefs.claudeKey.isBlank()) {
-            onStatus("1/3 · Rapprochement Statistique : $home vs $away…")
-            try { Thread.sleep(500) } catch (e: Exception) {}
-            onStatus("2/3 · Croisement Cartons Jaunes & Corners de $home et $away…")
-            try { Thread.sleep(600) } catch (e: Exception) {}
-            onStatus("3/3 · Application des conditions ngengesport.cd (Seuil ≥ 80%)…")
-            try { Thread.sleep(500) } catch (e: Exception) {}
-
-            // Calcul mathématique des espérances pour ngengesport.cd
-            val totalExpectedCorners = Math.round((matchInfo.homeProfile.avgCornersFor + matchInfo.awayProfile.avgCornersFor) * 10.0) / 10.0
-            val totalExpectedYellows = Math.round((matchInfo.homeProfile.avgYellowsFor + matchInfo.awayProfile.avgYellowsFor + (ref.avgYellows - 4.2) * 0.4) * 10.0) / 10.0
-
-            // Probabilités déterministes (≥ 80% rigoureusement garanties)
-            val probaYellows3_5 = Math.min(96, Math.max(83, Math.round(86 + (totalExpectedYellows - 4.5) * 4.0).toInt()))
-            val probaCorners8_5 = Math.min(94, Math.max(80, Math.round(83 + (totalExpectedCorners - 10.0) * 4.5).toInt()))
-            val probaYellows4_5 = Math.min(91, Math.max(80, Math.round(82 + (totalExpectedYellows - 4.8) * 5.0).toInt()))
-            val probaCornersHome4_5 = Math.min(92, Math.max(80, Math.round(81 + (matchInfo.homeProfile.avgCornersFor - 5.5) * 5.0).toInt()))
-            val probaYellowsAway2_5 = Math.min(90, Math.max(80, Math.round(82 + (matchInfo.awayProfile.avgYellowsFor - 2.3) * 6.0).toInt()))
-            val probaCorners10_5Moins = Math.min(88, Math.max(80, Math.round(84 - (totalExpectedCorners - 10.5) * 3.0).toInt()))
-
-            val json = """
-            {
-              "match": {
-                "domicile": "$home",
-                "exterieur": "$away",
-                "competition": "$comp",
-                "date": "Jour de match officiel",
-                "stade": "Stade officiel",
-                "arbitre": "${ref.name}"
-              },
-              "qualite_donnees": "haute_precision_80plus",
-              "rapprochement_statistique": {
-                "methode": "Croisement Multi-Séries & Conditions ngengesport.cd RDC",
-                "seuil_garanti": "≥ 80% de probabilité calculée",
-                "corners_attendus_total": $totalExpectedCorners,
-                "cartons_attendus_total": $totalExpectedYellows,
-                "stats_domicile": {
-                  "equipe": "$home",
-                  "corners_marques_moy": ${matchInfo.homeProfile.avgCornersFor},
-                  "cartons_jaunes_recus_moy": ${matchInfo.homeProfile.avgYellowsFor}
-                },
-                "stats_exterieur": {
-                  "equipe": "$away",
-                  "corners_marques_moy": ${matchInfo.awayProfile.avgCornersFor},
-                  "cartons_jaunes_recus_moy": ${matchInfo.awayProfile.avgYellowsFor}
-                },
-                "arbitre_analyse": {
-                  "nom": "${ref.name}",
-                  "moyenne_cartons_jaunes": "${ref.avgYellows} cartons/m",
-                  "severite": "${ref.severity}"
-                }
-              },
-              "pronostics": [
-                {
-                  "marche": "cartons_jaunes",
-                  "cible": "match",
-                  "selection": "Plus de 3,5 Cartons Jaunes Match",
-                  "probabilite": $probaYellows3_5,
-                  "cote_ngenge": 1.48,
-                  "conforme_ngenge": true,
-                  "regle_ngenge": "Règle NgengeSport RDC : Seuls les cartons jaunes donnés aux joueurs actifs sur le terrain (90 min réglementaires) comptent. Staff et banc exclus.",
-                  "justification": "Le rapprochement statistique anticipe une intensité disciplinaire de $totalExpectedYellows cartons. L'arbitre ${ref.name} maintient une moyenne élevée (${ref.avgYellows} cartons/m) et sanctionne rapidement tout excès d'engagement.",
-                  "facteurs": [
-                    "Arbitre officiel : ${ref.name} (${ref.avgYellows} cartons/m - Sévérité ${ref.severity})",
-                    "$home reçoit en moyenne ${matchInfo.homeProfile.avgYellowsFor} cartons/m",
-                    "$away concède en moyenne ${matchInfo.awayProfile.avgYellowsFor} cartons/m",
-                    "Conformité stricte ngengesport.cd (exclut les avertissements au banc/staff)"
-                  ]
-                },
-                {
-                  "marche": "corners",
-                  "cible": "match",
-                  "selection": "Plus de 8,5 Corners Match",
-                  "probabilite": $probaCorners8_5,
-                  "cote_ngenge": 1.62,
-                  "conforme_ngenge": true,
-                  "regle_ngenge": "Règle NgengeSport RDC : Seuls les corners effectivement tirés et mis en jeu sont comptabilisés.",
-                  "justification": "Production offensive conjointe estimée à $totalExpectedCorners corners. $home pousse intensément sur les ailes à domicile (${matchInfo.homeProfile.avgCornersFor} corners/m) face au bloc de $away.",
-                  "facteurs": [
-                    "$home à domicile : ${matchInfo.homeProfile.avgCornersFor} corners obtenus en moyenne",
-                    "$away en déplacement : concède ${matchInfo.awayProfile.avgCornersAgainst} corners/m",
-                    "Taux de franchissement de 8,5 corners supérieur à 80%"
-                  ]
-                },
-                {
-                  "marche": "cartons_jaunes",
-                  "cible": "match",
-                  "selection": "Plus de 4,5 Cartons Jaunes Match",
-                  "probabilite": $probaYellows4_5,
-                  "cote_ngenge": 1.76,
-                  "conforme_ngenge": true,
-                  "regle_ngenge": "Règle NgengeSport RDC : 1 avertissement par joueur sur le terrain = 1 point.",
-                  "justification": "Duel à haute intensité physique entre $home et $away en $comp. Le pressing médian et les fautes tactiques attendues (${matchInfo.homeProfile.avgFouls + matchInfo.awayProfile.avgFouls} fautes estimées) valident ce palier.",
-                  "facteurs": [
-                    "Enjeu compétitif en $comp",
-                    "Historique disciplinaire de ${ref.name} propice aux sanctions",
-                    "Moyenne combinée d'avertissements de $totalExpectedYellows"
-                  ]
-                },
-                {
-                  "marche": "corners",
-                  "cible": "domicile",
-                  "selection": "Corners $home Plus de 4,5",
-                  "probabilite": $probaCornersHome4_5,
-                  "cote_ngenge": 1.68,
-                  "conforme_ngenge": true,
-                  "regle_ngenge": "Règle NgengeSport RDC : Corners bottés par l'équipe recevante uniquement.",
-                  "justification": "$home franchit le seuil de 4,5 corners dans plus de ${matchInfo.homeProfile.over8_5CornersRate}% de ses matchs à domicile grâce à ses projections latérales régulières.",
-                  "facteurs": [
-                    "Animation offensive par les couloirs de $home",
-                    "$away concède ${matchInfo.awayProfile.avgCornersAgainst} corners en déplacement"
-                  ]
-                },
-                {
-                  "marche": "cartons_jaunes",
-                  "cible": "exterieur",
-                  "selection": "Cartons Jaunes $away Plus de 2,5",
-                  "probabilite": $probaYellowsAway2_5,
-                  "cote_ngenge": 1.82,
-                  "conforme_ngenge": true,
-                  "regle_ngenge": "Règle NgengeSport RDC : Avertissements individuels aux joueurs visiteurs en jeu.",
-                  "justification": "$away subit la possession en déplacement et concède en moyenne ${matchInfo.awayProfile.avgYellowsFor} cartons lors de ses voyages.",
-                  "facteurs": [
-                    "Fautes de rupture concédées par $away",
-                    "Bloc défensif exposé aux transitions rapides de $home"
-                  ]
-                }
-              ],
-              "ticket_ngengesport": {
-                "bookmaker": "ngengesport.cd (Congo RDC)",
-                "intitule": "Coupon NgengeSport Cartons & Corners : $home vs $away",
-                "selections_80plus": [
-                  {
-                    "marche": "Cartons Jaunes Match",
-                    "choix": "Plus de 3,5 Cartons Jaunes",
-                    "cote_estimee": 1.48,
-                    "probabilite": "$probaYellows3_5%",
-                    "conditions": "Temps réglementaire 90 min, joueurs sur le terrain uniquement."
-                  },
-                  {
-                    "marche": "Corners Match",
-                    "choix": "Plus de 8,5 Corners Match",
-                    "cote_estimee": 1.62,
-                    "probabilite": "$probaCorners8_5%",
-                    "conditions": "Corners effectivement tirés."
-                  }
-                ],
-                "cote_totale_combinee": 2.40,
-                "taux_confiance": "≥ 80% Certifié"
-              },
-              "synthese": "Rapprochement Statistique Validé (ngengesport.cd) pour $home vs $away ($comp). 100% des sélections présentées respectent le seuil garanti de probabilité ≥ 80%. Les lignes maîtresses retenues sont Plus de 3,5 Cartons Jaunes et Plus de 8,5 Corners Match.",
-              "donnees_manquantes": []
-            }
-            """.trimIndent()
-
-            val extractionReport = """
-                [RAPPORT DE RAPPROCHEMENT STATISTIQUE NGENGESPORT.CD]
-                🎯 Critère garanti : Probabilité ≥ 80%
-                
-                📋 Match Analysé :
-                • Championnat : $comp
-                • Affiche : $home vs $away
-                • Arbitre officiel : ${ref.name} (${ref.avgYellows} cartons/m · Sévérité ${ref.severity})
-                
-                📊 Données Domicile ($home) :
-                • Corners marqués / match : ${matchInfo.homeProfile.avgCornersFor}
-                • Cartons jaunes reçus / match : ${matchInfo.homeProfile.avgYellowsFor}
-                
-                📊 Données Extérieur ($away) :
-                • Corners marqués / match : ${matchInfo.awayProfile.avgCornersFor}
-                • Cartons jaunes reçus / match : ${matchInfo.awayProfile.avgYellowsFor}
-                
-                ⚖️ Conditions ngengesport.cd (RDC Congo) appliquées :
-                • Cartons jaunes : Seuls les avertissements aux 22 joueurs actifs sur le terrain (temps réglementaire 90 min) comptent. Staff et remplaçants exclus.
-                • Corners : Seuls les corners effectivement tirés et mis en jeu sont validés.
-            """.trimIndent()
-
-            return Result(
-                finalText = json,
-                extraction = extractionReport,
-                bigData1 = "[BIG DATA 1 - STATS OFFICIELLES]\n• Confrontation $comp : $home vs $away.\n• Arbitre ${ref.name} (${ref.avgYellows} avertissements/m).\n• Corners attendus : $totalExpectedCorners | Cartons attendus : $totalExpectedYellows.",
-                bigData2 = "[BIG DATA 2 - NGENGESPORT.CD]\n• Confrontations croisées pour $home vs $away.\n• Lignes de cotes ngengesport.cd analysées.\n• Filtrage rigoureux à probabilité ≥ 80% certifié.",
-                notes = listOf(
-                    "⚡ Rapprochement Statistique Actif : $home vs $away",
-                    "🎯 Probabilité ≥ 80% Validée",
-                    "🇨🇩 Conditions ngengesport.cd"
-                )
-            )
+            onStatus("1/3 · Estimation statistique : $home vs $away…")
+            onStatus("2/3 · Calcul cartons jaunes & corners…")
+            onStatus("3/3 · Filtre ≥ 80 % de probabilité estimée…")
+            return runAutonomous(matchInfo)
         }
+
 
         // Si l'utilisateur a configuré sa clé Claude :
         onStatus("1/3 · Rapprochement statistique pour $home vs $away…")
@@ -677,7 +631,7 @@ Concentre-toi EXCLUSIVEMENT sur DEUX statistiques :
 Conditions ngengesport.cd (RDC Congo) :
 - Joueurs actifs sur le terrain pendant le temps réglementaire 90 min uniquement (cartons banc et staff exclus).
 - Corners effectivement tirés uniquement.
-- Exigence fondamentale : Uniquement des sélections avec probabilité calculée ≥ 80%.
+- Exigence : uniquement des sélections dont la probabilité estimée est ≥ 80 %. Si aucune n'y arrive honnêtement, dis-le. N'invente aucune donnée.
 
 Match à analyser :
 - Équipe Domicile : $home

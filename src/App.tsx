@@ -486,7 +486,7 @@ export default function App() {
       if (data.finalText) {
         const parsed: ParsedAnalysis = JSON.parse(data.finalText);
         setAnalysisResult(parsed);
-        showToast('Rapprochement statistique calculé avec succès (≥ 80% certifié) !', 'success');
+        showToast('Estimation statistique calculée (probabilités estimées, aucune garantie)', 'success');
 
         // Sauvegarder dans l'historique
         const newEntry: HistoryEntry = {
@@ -627,9 +627,6 @@ export default function App() {
             >
               <Activity className="w-3.5 h-3.5 text-emerald-200" />
               <span className="hidden sm:inline">Efficacité & Audit</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-emerald-400 text-slate-950 text-[10px] font-black">
-                87.4%
-              </span>
             </button>
 
             <button
@@ -696,7 +693,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-3 text-[11px] font-medium text-slate-400">
             <span className="flex items-center gap-1 text-emerald-400">
-              <ShieldCheck className="w-3.5 h-3.5" /> Filtrage mathématique strict ≥ 80%
+              <ShieldCheck className="w-3.5 h-3.5" /> Probabilités estimées
             </span>
             <button
               onClick={() => setShowEfficacyReport(true)}
@@ -1100,7 +1097,7 @@ export default function App() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> CERTIFIÉ ≥ 80% PROBABILITÉ
+                      <CheckCircle2 className="w-3.5 h-3.5" /> PROBABILITÉ ESTIMÉE
                     </span>
                     <span className="text-xs text-amber-300 font-mono font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
                       {analysisResult.match.competition}
@@ -1234,7 +1231,7 @@ export default function App() {
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    Pronostics Cartons Jaunes & Corners (Filtrage Garanti ≥ 80%)
+                    Pronostics Cartons Jaunes & Corners (Probabilités estimées)
                   </h4>
                   <span className="text-xs text-amber-400 font-semibold">
                     {analysisResult.pronostics.length} sélection(s) qualifiée(s)
@@ -1485,6 +1482,7 @@ export default function App() {
 
       {/* MODALE D'AUDIT D'EFFICACITÉ & PRÉCISION ALGORITHMIQUE */}
       <EfficacyReportModal
+        history={history}
         isOpen={showEfficacyReport}
         onClose={() => setShowEfficacyReport(false)}
         onShowToast={showToast}

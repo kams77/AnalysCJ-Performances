@@ -1422,7 +1422,7 @@ app.post('/api/test-keys', async (req, res) => {
   if (gKey) {
     try {
       const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel || 'gemini-3.8-flash'}:generateContent?key=${gKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel || 'gemini-2.5-flash'}:generateContent?key=${gKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1678,6 +1678,24 @@ function exactPoissonOver(lambda: number, threshold: number): number {
   return Math.min(98, Math.max(2, Math.round((1 - cdfBelow) * 100)));
 }
 
+
+// Loi binomiale négative (moyenne mu, paramètre de dispersion r) : plus réaliste que Poisson
+// pour les corners et cartons, dont la variance dépasse la moyenne.
+const DISPERSION_CORNERS = 12;
+const DISPERSION_YELLOWS = 9;
+function nbOver(mu: number, threshold: number, r: number): number {
+  if (mu <= 0) return 0;
+  const q = mu / (r + mu);
+  let pmf = Math.pow(1 - q, r);
+  let cdf = 0;
+  const maxK = Math.floor(threshold);
+  for (let k = 0; k <= maxK; k++) {
+    cdf += pmf;
+    pmf = (pmf * (k + r) / (k + 1)) * q;
+  }
+  return Math.min(98, Math.max(2, Math.round((1 - cdf) * 100)));
+}
+
 // Calcul de Valeur Nette (Value Bet / Edge Mathématique vs Bookmaker)
 function calculateValueBet(probaReelle: number, coteNgenge: number): { proba_bookmaker: number; value_net: number; is_value_bet: boolean } {
   const proba_bookmaker = Math.round((1 / coteNgenge) * 100);
@@ -1747,7 +1765,8 @@ function calculateStatisticalRapprochement(
   rawAwayName: string,
   leagueName: string,
   refereeName?: string,
-  customRefereeYellows?: number
+  customRefereeYellows?: number,
+  userOdds?: Record<string, number>
 ) {
   const { home: homeName, away: awayName } = normalizeMatchTeams(rawHomeName, rawAwayName, leagueName);
 
@@ -1778,138 +1797,70 @@ function calculateStatisticalRapprochement(
   const refereeYellows = customRefereeYellows || (foundMatch ? foundMatch.referee.avgYellows : 4.8);
   const totalExpectedYellows = Number((homeYellows + awayYellows + (refereeYellows - 4.2) * 0.4).toFixed(1));
 
-  // Calcul mathématique EXACT via Loi de Poisson discrète
-  // Corners
-  // Pour Over 8.5 corners (X >= 9)
-  const exactPoisson8_5 = exactPoissonOver(totalExpectedCorners, 8.5);
-  const probaCornersPlus8_5 = Math.max(82, exactPoisson8_5);
+  // Probabilités réelles : loi binomiale négative (surdispersion), SANS plancher artificiel.
+  const homeCornersAdj = homeCorners + tactical.boostCorners * 0.6;
+  const awayYellowsAdj = awayYellows + (refereeYellows - 4.2) * 0.2;
+  const probaCornersPlus8_5 = nbOver(totalExpectedCorners, 8.5, DISPERSION_CORNERS);
+  const probaCornersHomePlus4_5 = nbOver(homeCornersAdj, 4.5, DISPERSION_CORNERS);
+  const probaYellowsPlus3_5 = nbOver(totalExpectedYellows, 3.5, DISPERSION_YELLOWS);
+  const probaYellowsAwayPlus1_5 = nbOver(awayYellowsAdj, 1.5, DISPERSION_YELLOWS);
 
-  // Pour Over 7.5 corners (X >= 8)
-  const exactPoisson7_5 = exactPoissonOver(totalExpectedCorners, 7.5);
-  const probaCornersPlus7_5 = Math.max(88, exactPoisson7_5);
-
-  // Corners Domicile Over 4.5
-  const exactPoissonHome4_5 = exactPoissonOver(homeCorners + tactical.boostCorners * 0.6, 4.5);
-  const probaCornersHomePlus4_5 = Math.max(81, exactPoissonHome4_5);
-
-  // Cartons
-  // Pour Over 3.5 cartons (X >= 4)
-  const exactPoissonYellows3_5 = exactPoissonOver(totalExpectedYellows, 3.5);
-  const probaYellowsPlus3_5 = Math.max(83, exactPoissonYellows3_5);
-
-  // Pour Over 2.5 cartons (X >= 3)
-  const exactPoissonYellows2_5 = exactPoissonOver(totalExpectedYellows, 2.5);
-  const probaYellowsPlus2_5 = Math.max(91, exactPoissonYellows2_5);
-
-  // Cartons Visiteur Over 1.5
-  const exactPoissonAway1_5 = exactPoissonOver(awayYellows + (refereeYellows - 4.2) * 0.2, 1.5);
-  const probaYellowsAwayPlus1_5 = Math.max(85, exactPoissonAway1_5);
-
-  const pronostics: any[] = [];
-
-  // 1. Cartons Jaunes Plus de 3,5 Match
-  if (probaYellowsPlus3_5 >= 80) {
-    const cote = 1.48;
-    const val = calculateValueBet(probaYellowsPlus3_5, cote);
-    pronostics.push({
-      marche: 'cartons_jaunes',
-      cible: 'match',
-      selection: 'Plus de 3,5 Cartons Jaunes Match',
-      probabilite: probaYellowsPlus3_5,
-      cote_ngenge: cote,
+  const fairOdds = (p: number) => Number((100 / Math.max(p, 1)).toFixed(2));
+  const buildProno = (
+    marche: 'cartons_jaunes' | 'corners', cible: string, key: string, selection: string,
+    proba: number, lambda: number, k: number, regle: string, justification: string, extra: string
+  ) => {
+    const userCote = userOdds?.[key];
+    const val = userCote ? calculateValueBet(proba, userCote) : undefined;
+    return {
+      marche, cible, selection,
+      probabilite: proba,
+      cote_ngenge: userCote ?? fairOdds(proba),
+      cote_source: userCote ? 'saisie_utilisateur' : 'cote_juste_estimee',
       conforme_ngenge: true,
-      regle_ngenge: 'Seuls les cartons aux joueurs sur le terrain comptent (temps réglementaire 90 min).',
-      justification: `Modèle Poisson exact : espérance de ${totalExpectedYellows} avertissements (λ=${totalExpectedYellows}). Sévérité arbitre ${refereeYellows} cartons/m.`,
+      regle_ngenge: regle,
+      justification,
       facteurs: [
-        `Loi de Poisson : P(X ≥ 4) = ${probaYellowsPlus3_5}% certifié`,
-        `Edge vs Bookmaker : +${val.value_net}% de Value réelle (cote @${cote} implique ${val.proba_bookmaker}%)`,
-        `Arbitre désigné : ${refereeName || foundMatch?.referee.name || 'Officiel'} (${refereeYellows} CJ/m)`,
+        `Binomiale négative : P(X ≥ ${k}) ≈ ${proba}% (λ=${lambda})`,
+        val
+          ? `Écart vs cote saisie @${userCote} : ${val.value_net >= 0 ? '+' : ''}${val.value_net} pts (cote implique ${val.proba_bookmaker}%)`
+          : 'Cote bookmaker non saisie : aucune value calculée',
+        extra,
       ],
-      poisson_lambda: totalExpectedYellows,
-      poisson_exact: `${probaYellowsPlus3_5}%`,
-      proba_bookmaker: val.proba_bookmaker,
-      value_net: val.value_net,
-      is_value_bet: val.is_value_bet,
-    });
-  }
+      poisson_lambda: lambda,
+      poisson_exact: `${proba}%`,
+      proba_bookmaker: val?.proba_bookmaker,
+      value_net: val?.value_net,
+      is_value_bet: val?.is_value_bet ?? false,
+    };
+  };
 
-  // 2. Corners Plus de 8,5 Match
-  if (probaCornersPlus8_5 >= 80) {
-    const cote = 1.64;
-    const val = calculateValueBet(probaCornersPlus8_5, cote);
-    pronostics.push({
-      marche: 'corners',
-      cible: 'match',
-      selection: 'Plus de 8,5 Corners Match',
-      probabilite: probaCornersPlus8_5,
-      cote_ngenge: cote,
-      conforme_ngenge: true,
-      regle_ngenge: 'Seuls les corners effectivement tirés et mis en jeu sont validés par NgengeSport.',
-      justification: `Modèle Poisson exact : espérance de ${totalExpectedCorners} corners (λ=${totalExpectedCorners}). Largeur tactique élevée (+${tactical.boostCorners.toFixed(1)} corners).`,
-      facteurs: [
-        `Loi de Poisson : P(X ≥ 9) = ${probaCornersPlus8_5}% certifié`,
-        `Edge vs Bookmaker : +${val.value_net}% de Value réelle (cote @${cote} implique ${val.proba_bookmaker}%)`,
-        `Largeur de jeu : ${homeName} (${tactical.domicile_ailiers_score}%) et ${awayName} (${tactical.exterieur_ailiers_score}%)`,
-      ],
-      poisson_lambda: totalExpectedCorners,
-      poisson_exact: `${probaCornersPlus8_5}%`,
-      proba_bookmaker: val.proba_bookmaker,
-      value_net: val.value_net,
-      is_value_bet: val.is_value_bet,
-    });
-  }
+  const candidates = [
+    buildProno('cartons_jaunes', 'match', 'cj_match_3_5', 'Plus de 3,5 Cartons Jaunes Match', probaYellowsPlus3_5,
+      totalExpectedYellows, 4, 'Seuls les cartons aux joueurs sur le terrain comptent (temps réglementaire 90 min).',
+      `Espérance de ${totalExpectedYellows} avertissements. Sévérité arbitre ${refereeYellows} cartons/m.`,
+      `Arbitre désigné : ${refereeName || foundMatch?.referee.name || 'Officiel'} (${refereeYellows} CJ/m)`),
+    buildProno('corners', 'match', 'co_match_8_5', 'Plus de 8,5 Corners Match', probaCornersPlus8_5,
+      totalExpectedCorners, 9, 'Seuls les corners effectivement tirés et mis en jeu sont validés par NgengeSport.',
+      `Espérance de ${totalExpectedCorners} corners (largeur tactique +${tactical.boostCorners.toFixed(1)}).`,
+      `Largeur de jeu : ${homeName} (${tactical.domicile_ailiers_score}%) et ${awayName} (${tactical.exterieur_ailiers_score}%)`),
+    buildProno('corners', 'domicile', 'co_dom_4_5', `Corners ${homeName} Plus de 4,5`, probaCornersHomePlus4_5,
+      Number(homeCornersAdj.toFixed(1)), 5, 'Corners bottés par l’équipe locale au temps réglementaire.',
+      `${homeName} : ${homeCorners} corners/m en moyenne, ajusté par la largeur de jeu.`,
+      `Indice d'utilisation des ailes : ${tactical.domicile_ailiers_score}/100`),
+    buildProno('cartons_jaunes', 'exterieur', 'cj_ext_1_5', `Cartons Jaunes ${awayName} Plus de 1,5`, probaYellowsAwayPlus1_5,
+      Number(awayYellowsAdj.toFixed(1)), 2, 'Sanctions individuelles aux joueurs visiteurs en jeu durant 90 min.',
+      `${awayName} : ${awayYellows} cartons/m en moyenne, ajusté par la sévérité de l'arbitre.`,
+      `Moyenne de fautes concédées en déplacement : ${foundMatch?.awayStats.avgFouls ?? 'donnée indisponible'}/m`),
+  ].sort((a, b) => b.probabilite - a.probabilite);
 
-  // 3. Corners Domicile Plus de 4,5
-  if (probaCornersHomePlus4_5 >= 80) {
-    const cote = 1.70;
-    const val = calculateValueBet(probaCornersHomePlus4_5, cote);
-    pronostics.push({
-      marche: 'corners',
-      cible: 'domicile',
-      selection: `Corners ${homeName} Plus de 4,5`,
-      probabilite: probaCornersHomePlus4_5,
-      cote_ngenge: cote,
-      conforme_ngenge: true,
-      regle_ngenge: 'Corners bottés par l’équipe locale au temps réglementaire.',
-      justification: `${homeName} développe une poussée de couloir majeure à domicile (${homeCorners} corners/m + impact ailiers).`,
-      facteurs: [
-        `Loi de Poisson : P(X ≥ 5) = ${probaCornersHomePlus4_5}%`,
-        `Edge vs Bookmaker : +${val.value_net}% de Value réelle`,
-        `Indice d'utilisation des ailes : ${tactical.domicile_ailiers_score}/100`,
-      ],
-      poisson_lambda: Number((homeCorners + tactical.boostCorners * 0.6).toFixed(1)),
-      poisson_exact: `${probaCornersHomePlus4_5}%`,
-      proba_bookmaker: val.proba_bookmaker,
-      value_net: val.value_net,
-      is_value_bet: val.is_value_bet,
-    });
-  }
-
-  // 4. Cartons Jaunes Visiteur Plus de 1,5
-  if (probaYellowsAwayPlus1_5 >= 80) {
-    const cote = 1.55;
-    const val = calculateValueBet(probaYellowsAwayPlus1_5, cote);
-    pronostics.push({
-      marche: 'cartons_jaunes',
-      cible: 'exterieur',
-      selection: `Cartons Jaunes ${awayName} Plus de 1,5`,
-      probabilite: probaYellowsAwayPlus1_5,
-      cote_ngenge: cote,
-      conforme_ngenge: true,
-      regle_ngenge: 'Sanctions individuelles aux joueurs visiteurs en jeu durant 90 min.',
-      justification: `${awayName} subit la possession en déplacement et commet des fautes tactiques d’arrêt de contre.`,
-      facteurs: [
-        `Loi de Poisson : P(X ≥ 2) = ${probaYellowsAwayPlus1_5}%`,
-        `Edge vs Bookmaker : +${val.value_net}% de Value réelle`,
-        `Moyenne de fautes concédées en déplacement : ${foundMatch?.awayStats.avgFouls || 13.8}/m`,
-      ],
-      poisson_lambda: Number((awayYellows + (refereeYellows - 4.2) * 0.2).toFixed(1)),
-      poisson_exact: `${probaYellowsAwayPlus1_5}%`,
-      proba_bookmaker: val.proba_bookmaker,
-      value_net: val.value_net,
-      is_value_bet: val.is_value_bet,
-    });
-  }
+  // Haute confiance = probabilité réelle >= 80 %. Sinon on affiche les 2 meilleures en le disant.
+  const highConf = candidates.filter((c) => c.probabilite >= 80);
+  const pronostics: any[] = (highConf.length > 0 ? highConf : candidates.slice(0, 2)).map((c) => ({
+    ...c,
+    niveau_confiance: c.probabilite >= 80 ? 'haute' : c.probabilite >= 65 ? 'moyenne' : 'faible',
+  }));
+  const aucuneHauteConfiance = highConf.length === 0;
 
   const kickoffDateStr = foundMatch
     ? `${foundMatch.date} à ${foundMatch.time} (${foundMatch.timezone || 'GMT+1 Kinshasa'})`
@@ -1927,8 +1878,8 @@ function calculateStatisticalRapprochement(
       arbitre: refereeName || foundMatch?.referee.name || 'Arbitre officiel désigné',
     },
     rapprochement_statistique: {
-      methode: 'Modélisation Quantitative Poisson Bivariée & Largeur Tactique',
-      seuil_garanti: '≥ 80% de probabilité calculée',
+      methode: 'Binomiale négative (surdispersion) & largeur tactique',
+      seuil_garanti: aucuneHauteConfiance ? 'Aucune sélection ≥ 80 % : meilleures options affichées à titre indicatif' : 'Sélections ≥ 80 % de probabilité estimée',
       corners_attendus_total: totalExpectedCorners,
       cartons_attendus_total: totalExpectedYellows,
       stats_domicile: {
@@ -1955,7 +1906,7 @@ function calculateStatisticalRapprochement(
       },
       scenarios_match: scenarios,
     },
-    qualite_donnees: 'modele_quantitatif_avance_80plus',
+    qualite_donnees: foundMatch ? 'base_equipes_statique' : 'moyennes_par_defaut',
     pronostics,
     ticket_ngengesport: {
       bookmaker: 'ngengesport.cd (Congo RDC)',
@@ -1971,9 +1922,9 @@ function calculateStatisticalRapprochement(
       cote_totale_combinee: Number(
         pronostics.slice(0, 2).reduce((acc, p) => acc * p.cote_ngenge, 1).toFixed(2)
       ),
-      taux_confiance: '≥ 80% Mathématiquement Certifié (Loi de Poisson)',
+      taux_confiance: 'Estimation statistique, aucune garantie de résultat',
     },
-    synthese: `Rapprochement quantitatif par Loi de Poisson exacte (λ_corners=${totalExpectedCorners}, λ_cartons=${totalExpectedYellows}) pour ${homeName} vs ${awayName}. Les sélections sélectionnées dépassent 80% de probabilité mathématique et présentent une Value nette positive contre les cotes ngengesport.cd.`,
+    synthese: `Estimation par loi binomiale négative (λ_corners=${totalExpectedCorners}, λ_cartons=${totalExpectedYellows}) pour ${homeName} vs ${awayName}. ${aucuneHauteConfiance ? 'Aucune sélection n\'atteint 80 % de probabilité estimée.' : 'Les sélections retenues dépassent 80 % de probabilité estimée.'} Ce sont des estimations, pas des certitudes ; les données équipes ${foundMatch ? 'proviennent de la base interne' : 'sont des moyennes par défaut'}.`,
   };
 }
 
@@ -1984,8 +1935,8 @@ app.post('/api/analyze', async (req, res) => {
 
     const { home, away, league: currentLeague } = normalizeMatchTeams(homeTeam, awayTeam, league);
 
-    // Rapprochement déterministe de base ultra-fiable (garantie mathématique ≥ 80% ngengesport.cd)
-    const deterministicData = calculateStatisticalRapprochement(home, away, currentLeague, referee);
+    // Estimation statistique de base
+    const deterministicData = calculateStatisticalRapprochement(home, away, currentLeague, referee, undefined, req.body.cotes);
 
     // Si Gemini est disponible, on peut enrichir ou consolider le rapprochement statistique
     if ((mode === 'autonomous' || !settings?.claudeKey) && ai) {
@@ -2113,7 +2064,7 @@ Réponds STRICTEMENT sous la forme d'un objet JSON avec cette structure :
             },
             rapprochement_statistique: {
               methode: parsed.rapprochement_statistique?.methode || deterministicData.rapprochement_statistique.methode,
-              seuil_garanti: '≥ 80% de probabilité calculée',
+              seuil_garanti: aucuneHauteConfiance ? 'Aucune sélection ≥ 80 % : meilleures options affichées à titre indicatif' : 'Sélections ≥ 80 % de probabilité estimée',
               corners_attendus_total: Number(parsed.rapprochement_statistique?.corners_attendus_total || deterministicData.rapprochement_statistique.corners_attendus_total),
               cartons_attendus_total: Number(parsed.rapprochement_statistique?.cartons_attendus_total || deterministicData.rapprochement_statistique.cartons_attendus_total),
               stats_domicile: {
