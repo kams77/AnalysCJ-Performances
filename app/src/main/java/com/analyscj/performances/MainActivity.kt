@@ -5,6 +5,8 @@ import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -185,6 +187,39 @@ class MainActivity : Activity() {
         banner.addView(label("⚖️ RÈGLES NGENGESPORT.CD APPLIQUÉES :", 11f, yellow, true))
         banner.addView(label("• Cartons : Seuls les cartons jaunes donnés aux joueurs sur le terrain pendant 90 min comptent.\n• Corners : Seuls les corners effectivement tirés comptent.\n• Filtrage rigoureux : Sélections avec probabilité calculée ≥ 80%.", 11f, textMuted))
         root.addView(banner, matchWrap(12))
+
+        // Boutons Accès Rapide Version Web & Mise à Jour APK v3.2
+        val quickActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(4), 0, 0)
+        }
+        val webBtn = button("🌐 Version Web Complète (v3.2)", Color.parseColor("#059669"), Color.WHITE).apply {
+            textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(4) }
+            setOnClickListener {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://ais-pre-3czwaebat75v3qi2px7pzu-592958834332.europe-west3.run.app"))
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "Impossible d'ouvrir le navigateur", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        val updateApkBtn = button("⬇️ Télécharger APK v3.2", Color.parseColor("#2563EB"), Color.WHITE).apply {
+            textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(4) }
+            setOnClickListener {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/kams77/AnalysCJ-Performances/releases/download/v3.2.0/AnalysCJ-v3.2-Autonome.apk"))
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "Impossible d'ouvrir le lien de téléchargement", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        quickActions.addView(webBtn)
+        quickActions.addView(updateApkBtn)
+        root.addView(quickActions, matchWrap(8))
 
         // Étape 1 : Les 6 Championnats
         val leagueCard = cardBox()
