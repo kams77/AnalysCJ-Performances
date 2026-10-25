@@ -1494,7 +1494,7 @@ export default function App() {
           Analyse C&J Performances · Conforme conditions ngengesport.cd (RDC Congo)
         </p>
         <p className="text-[11px]">
-          Filtre mathématique de probabilité ≥ 80% · Cartons Jaunes & Corners uniquement. Jouez de manière responsable.
+          Probabilités estimées par un modèle statistique, sans garantie de résultat · Cartons Jaunes & Corners uniquement. Les paris comportent un risque de perte d'argent : réservé aux 18+, ne misez que ce que vous pouvez perdre.
         </p>
       </footer>
     </div>

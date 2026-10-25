@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
+import { nbOver, calculateValueBet, DISPERSION_CORNERS, DISPERSION_YELLOWS } from './probability';
 
 dotenv.config();
 
@@ -1658,55 +1659,6 @@ export function normalizeMatchTeams(
 }
 
 // Calculs Mathématiques Avancés : Loi de Poisson Discrète Exacte
-function mathFactorial(n: number): number {
-  if (n <= 1) return 1;
-  let res = 1;
-  for (let i = 2; i <= n; i++) res *= i;
-  return res;
-}
-
-function exactPoissonProbability(lambda: number, k: number): number {
-  return (Math.pow(lambda, k) * Math.exp(-lambda)) / mathFactorial(k);
-}
-
-function exactPoissonOver(lambda: number, threshold: number): number {
-  const minK = Math.floor(threshold) + 1;
-  let cdfBelow = 0;
-  for (let i = 0; i < minK; i++) {
-    cdfBelow += exactPoissonProbability(lambda, i);
-  }
-  return Math.min(98, Math.max(2, Math.round((1 - cdfBelow) * 100)));
-}
-
-
-// Loi binomiale négative (moyenne mu, paramètre de dispersion r) : plus réaliste que Poisson
-// pour les corners et cartons, dont la variance dépasse la moyenne.
-const DISPERSION_CORNERS = 12;
-const DISPERSION_YELLOWS = 9;
-function nbOver(mu: number, threshold: number, r: number): number {
-  if (mu <= 0) return 0;
-  const q = mu / (r + mu);
-  let pmf = Math.pow(1 - q, r);
-  let cdf = 0;
-  const maxK = Math.floor(threshold);
-  for (let k = 0; k <= maxK; k++) {
-    cdf += pmf;
-    pmf = (pmf * (k + r) / (k + 1)) * q;
-  }
-  return Math.min(98, Math.max(2, Math.round((1 - cdf) * 100)));
-}
-
-// Calcul de Valeur Nette (Value Bet / Edge Mathématique vs Bookmaker)
-function calculateValueBet(probaReelle: number, coteNgenge: number): { proba_bookmaker: number; value_net: number; is_value_bet: boolean } {
-  const proba_bookmaker = Math.round((1 / coteNgenge) * 100);
-  const value_net = probaReelle - proba_bookmaker;
-  return {
-    proba_bookmaker,
-    value_net,
-    is_value_bet: value_net >= 10,
-  };
-}
-
 // Analyse de Largeur Tactique & Profil Ailiers
 function computeTacticalWidthProfile(homeName: string, awayName: string) {
   const heavyWingKeywords = [
