@@ -49,7 +49,8 @@ class Analyzer(
         val competition: String,
         val referee: RefereeProfile,
         val homeProfile: TeamProfile,
-        val awayProfile: TeamProfile
+        val awayProfile: TeamProfile,
+        val fromDatabase: Boolean = true
     )
 
     companion object {
@@ -340,7 +341,8 @@ class Analyzer(
                 competition = comp,
                 referee = ref,
                 homeProfile = homeProf,
-                awayProfile = awayProf
+                awayProfile = awayProf,
+                fromDatabase = findTeamInDb(homeRaw) != null && findTeamInDb(awayRaw) != null
             )
         }
 
