@@ -23,6 +23,6 @@ jobs:
           node-version: "22"
       - name: Installer les dépendances
         run: |
-          npm install --no-audit --no-fund > npm-install.log 2>&1 || { echo "::error::$(grep -E 'npm (error|ERR)' npm-install.log | head -8 | tr '\n' ' ')"; exit 1; }
+          npm install --no-audit --no-fund > npm-install.log 2>&1 || { echo "::error::$(grep -E 'peer|Conflicting|Could not resolve|Found:' npm-install.log | head -8 | tr '\n' ' ')"; exit 1; }
       - run: npm run lint
       - run: npm run build
