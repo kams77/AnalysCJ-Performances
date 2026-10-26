@@ -115,3 +115,6 @@ Ouvrez ensuite votre navigateur sur **http://localhost:3000**.
 ## Efficacité mesurée
 Résultats d'un backtest walk-forward sur 10 305 matchs réels (2021-2025) : voir [backtest/RESULTATS.md](backtest/RESULTATS.md).
 En bref : probabilités bien calibrées (≈ 85 % annoncé pour ≈ 83,5 % réel), mais avantage faible sur une simple moyenne de championnat, et rentabilité non démontrée faute de cotes réelles. Estimations, aucune garantie.
+
+## Matchs NgengeSport
+Le bouton « Actualiser » lit la page publique de ngengesport.cd (variable `NGENGE_URL` pour changer l'adresse) et remplace le calendrier interne par les matchs réels. Les équipes des 6 championnats suivis gardent leurs statistiques ; les autres matchs vont dans « Autres matchs NgengeSport » avec des moyennes génériques (fiabilité réduite). Si le site est inaccessible ou illisible, l'app l'affiche clairement et garde le calendrier interne (qui peut être périmé). Aucune API officielle n'est utilisée : si le site change de structure, le parseur (`ngenge.ts`) devra être adapté.

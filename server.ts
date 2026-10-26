@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
+import { fetchNgengeFixtures, resolveDay, type RawFixture } from './ngenge';
 import { nbOver, calculateValueBet, DISPERSION_CORNERS_TOTAL, DISPERSION_CORNERS_TEAM, DISPERSION_YELLOWS } from './probability';
 
 dotenv.config();
@@ -1365,9 +1366,81 @@ export const CHAMPIONSHIPS: Championship[] = [
 ];
 
 // Endpoint pour lister les championnats et matchs
+
+// ---------------------------------------------------------------------------
+// Matchs réels de ngengesport.cd : fusion avec la base interne (statistiques d'équipes).
+// ---------------------------------------------------------------------------
+function findKnownTeamStats(name: string): TeamStats | undefined {
+  const lower = name.toLowerCase();
+  for (const league of CHAMPIONSHIPS) {
+    for (const m of league.matches) {
+      if (m.homeTeam.toLowerCase() === lower) return m.homeStats;
+      if (m.awayTeam.toLowerCase() === lower) return m.awayStats;
+    }
+  }
+  return undefined;
+}
+
+function defaultTeamStats(leagueName: string, home: boolean): TeamStats {
+  const d = LEAGUE_DEFAULTS[leagueName] || GENERIC_DEFAULTS;
+  const c = home ? d.cornersDom : d.cornersExt;
+  const y = home ? d.cartonsDom : d.cartonsExt;
+  return { avgCornersFor: c, avgCornersAgainst: home ? d.cornersExt : d.cornersDom, avgYellowsFor: y,
+    avgYellowsAgainst: home ? d.cartonsExt : d.cartonsDom, avgFouls: 12.5, over8_5CornersRate: 50, over3_5YellowsRate: 50 };
+}
+
+let liveState: { at: number; leagues: Championship[]; imported: number; others: number } | null = null;
+
+function buildLiveLeagues(raw: RawFixture[]): { leagues: Championship[]; imported: number; others: number } {
+  const leagues: Championship[] = CHAMPIONSHIPS.map((l) => ({ ...l, matches: [] }));
+  const others: Championship = {
+    id: 'ngenge-autres', name: 'Autres matchs NgengeSport', shortName: 'Autres', country: 'International', flag: '🌍',
+    leagueMoyenneCorners: 9.8, leagueMoyenneCartons: 4.2,
+    description: 'Matchs affichés sur ngengesport.cd hors des 6 championnats suivis : moyennes génériques, fiabilité réduite.',
+    matches: [],
+  };
+  raw.forEach((r, i) => {
+    const home = resolveTeamName(r.home);
+    const away = resolveTeamName(r.away);
+    const leagueName = inferLeagueForTeam(home, '') || inferLeagueForTeam(away, '');
+    const target = leagues.find((l) => l.name === leagueName) || others;
+    const when = resolveDay(r.day);
+    const known = target !== others;
+    target.matches.push({
+      id: `ng-${i}-${home}-${away}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-'),
+      leagueId: target.id, leagueName: target.name, country: target.country, flag: target.flag,
+      homeTeam: known ? home : r.home, awayTeam: known ? away : r.away,
+      date: when.date, dayLabel: when.dayLabel, time: r.time, timezone: 'GMT+1 (Kinshasa)',
+      stadium: 'Non communiqué',
+      referee: { name: 'Non communiqué', avgYellows: 4.2, avgFouls: 24, severity: 'Modéré' },
+      homeStats: findKnownTeamStats(home) || defaultTeamStats(target.name, true),
+      awayStats: findKnownTeamStats(away) || defaultTeamStats(target.name, false),
+      h2h: { last5MatchesCorners: [], last5MatchesYellows: [], avgCorners: 0, avgYellows: 0 },
+      ngengeSportLines: { corners: [], cartons: [] },
+      cotes1x2: r.odds,
+      source: 'ngengesport.cd',
+    } as MatchFixture);
+  });
+  const all = [...leagues, ...(others.matches.length ? [others] : [])];
+  return { leagues: all, imported: raw.length, others: others.matches.length };
+}
+
+async function refreshLive(force: boolean): Promise<string | null> {
+  try {
+    const raw = await fetchNgengeFixtures(undefined, force);
+    const b = buildLiveLeagues(raw);
+    liveState = { at: Date.now(), ...b };
+    return null;
+  } catch (e: any) {
+    return e?.name === 'AbortError' ? 'délai dépassé' : (e?.message || String(e));
+  }
+}
+void refreshLive(false); // tentative silencieuse au démarrage
+
 app.get('/api/leagues', (_req, res) => {
   res.json({
-    leagues: CHAMPIONSHIPS,
+    leagues: liveState ? liveState.leagues : CHAMPIONSHIPS,
+    source: liveState ? 'ngengesport.cd' : 'base_interne',
     lastUpdated: new Date().toISOString(),
     reglesNgengeSport: {
       source: 'ngengesport.cd',
@@ -1375,19 +1448,24 @@ app.get('/api/leagues', (_req, res) => {
         'Seuls les cartons jaunes donnés aux joueurs actifs sur le terrain pendant le temps réglementaire (90 min + temps additionnel) sont pris en compte. Les cartons au banc et au staff technique sont exclus.',
       corners:
         'Seuls les corners effectivement tirés et mis en jeu sont comptabilisés. Tout corner sifflé mais non exécuté avant le coup de sifflet final est nul.',
-      seuilProbabilite: 'Sélection certifiée avec probabilité calculée ≥ 80%',
+      seuilProbabilite: 'Sélection filtrée : probabilité estimée ≥ 80 % (estimation, aucune garantie)',
     },
   });
 });
 
 // Endpoint d'actualisation explicite (Bouton Actualiser)
-app.get('/api/refresh', (_req, res) => {
+app.get('/api/refresh', async (_req, res) => {
+  const error = await refreshLive(true);
+  const live = !error && liveState;
   res.json({
     success: true,
-    message: 'Calendrier des matchs, dates de jeu et cotes ngengesport.cd actualisés avec succès',
+    source: live ? 'ngengesport.cd' : 'base_interne',
+    message: live
+      ? `${liveState!.imported} matchs récupérés sur ngengesport.cd${liveState!.others ? ` (dont ${liveState!.others} hors des 6 championnats suivis)` : ''}`
+      : `ngengesport.cd inaccessible (${error}) : calendrier interne affiché, il peut être périmé`,
     timestamp: Date.now(),
     lastUpdated: new Date().toISOString(),
-    leagues: CHAMPIONSHIPS,
+    leagues: live ? liveState!.leagues : CHAMPIONSHIPS,
   });
 });
 
@@ -1754,12 +1832,14 @@ function calculateStatisticalRapprochement(
   const tactical = computeTacticalWidthProfile(homeName, awayName);
 
   const defs = LEAGUE_DEFAULTS[leagueName] || GENERIC_DEFAULTS;
-  const homeCorners = foundMatch ? foundMatch.homeStats.avgCornersFor : defs.cornersDom;
-  const awayCorners = foundMatch ? foundMatch.awayStats.avgCornersFor : defs.cornersExt;
+  const hKnown = foundMatch ? undefined : findKnownTeamStats(homeName);
+  const aKnown = foundMatch ? undefined : findKnownTeamStats(awayName);
+  const homeCorners = foundMatch ? foundMatch.homeStats.avgCornersFor : (hKnown?.avgCornersFor ?? defs.cornersDom);
+  const awayCorners = foundMatch ? foundMatch.awayStats.avgCornersFor : (aKnown?.avgCornersFor ?? defs.cornersExt);
   const totalExpectedCorners = Number((homeCorners + awayCorners + tactical.boostCorners).toFixed(1));
 
-  const homeYellows = foundMatch ? foundMatch.homeStats.avgYellowsFor : defs.cartonsDom;
-  const awayYellows = foundMatch ? foundMatch.awayStats.avgYellowsFor : defs.cartonsExt;
+  const homeYellows = foundMatch ? foundMatch.homeStats.avgYellowsFor : (hKnown?.avgYellowsFor ?? defs.cartonsDom);
+  const awayYellows = foundMatch ? foundMatch.awayStats.avgYellowsFor : (aKnown?.avgYellowsFor ?? defs.cartonsExt);
   const refereeYellows = customRefereeYellows || (foundMatch ? foundMatch.referee.avgYellows : 4.8);
   const totalExpectedYellows = Number((homeYellows + awayYellows + (refereeYellows - 4.2) * 0.4).toFixed(1));
 

@@ -258,7 +258,7 @@ export default function App() {
         const now = new Date();
         const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
         setLastUpdated(timeStr);
-        showToast('Calendrier, dates de jeu et cotes ngengesport.cd actualisés avec succès !', 'success');
+        showToast(data.message || 'Calendrier actualisé', data.source === 'ngengesport.cd' ? 'success' : 'error');
       }
     } catch (err) {
       console.error('Erreur actualisation:', err);
