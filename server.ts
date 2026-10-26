@@ -2110,7 +2110,7 @@ Réponds STRICTEMENT sous la forme d'un objet JSON avec cette structure :
             },
             rapprochement_statistique: {
               methode: parsed.rapprochement_statistique?.methode || deterministicData.rapprochement_statistique.methode,
-              seuil_garanti: aucuneHauteConfiance ? 'Aucune sélection ≥ 80 % : meilleures options affichées à titre indicatif' : 'Sélections ≥ 80 % de probabilité estimée',
+              seuil_garanti: deterministicData.rapprochement_statistique.seuil_garanti,
               corners_attendus_total: Number(parsed.rapprochement_statistique?.corners_attendus_total || deterministicData.rapprochement_statistique.corners_attendus_total),
               cartons_attendus_total: Number(parsed.rapprochement_statistique?.cartons_attendus_total || deterministicData.rapprochement_statistique.cartons_attendus_total),
               stats_domicile: {
