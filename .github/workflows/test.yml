@@ -21,6 +21,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install --no-audit --no-fund
+      - name: Installer les dépendances
+        run: |
+          npm install --no-audit --no-fund > npm-install.log 2>&1 || { echo "::error::$(grep -E 'npm (error|ERR)' npm-install.log | head -8 | tr '\n' ' ')"; exit 1; }
       - run: npm run lint
       - run: npm run build
