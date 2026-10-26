@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nbOver, calculateValueBet, DISPERSION_CORNERS, DISPERSION_YELLOWS } from './probability.ts';
+import { nbOver, calculateValueBet, DISPERSION_CORNERS_TOTAL, DISPERSION_CORNERS_TEAM, DISPERSION_YELLOWS } from './probability.ts';
 
 test('la probabilité augmente avec la moyenne attendue', () => {
-  assert.ok(nbOver(12, 8.5, DISPERSION_CORNERS) > nbOver(9, 8.5, DISPERSION_CORNERS));
+  assert.ok(nbOver(12, 8.5, DISPERSION_CORNERS_TOTAL) > nbOver(9, 8.5, DISPERSION_CORNERS_TOTAL));
 });
 
 test('la probabilité baisse quand le seuil monte', () => {
@@ -11,7 +11,7 @@ test('la probabilité baisse quand le seuil monte', () => {
 });
 
 test('aucun plancher artificiel : une moyenne basse donne une probabilité basse', () => {
-  assert.ok(nbOver(6, 8.5, DISPERSION_CORNERS) < 40);
+  assert.ok(nbOver(6, 8.5, DISPERSION_CORNERS_TOTAL) < 40);
 });
 
 test('la surdispersion réduit la confiance par rapport à une variance serrée', () => {
@@ -28,4 +28,16 @@ test('value bet : seulement si l\'écart dépasse 10 points', () => {
   assert.equal(calculateValueBet(70, 2).is_value_bet, true); // 70 - 50 = 20
   assert.equal(calculateValueBet(55, 2).is_value_bet, false); // 5
   assert.equal(calculateValueBet(80, 1).is_value_bet, false); // cote invalide
+});
+
+test('r = Infinity équivaut à Poisson (valeur connue : P(X>=3 | mu=2) ≈ 32 %)', () => {
+  assert.equal(nbOver(2, 2.5, Infinity), 32);
+});
+
+test('Poisson et binomiale négative à grand r concordent', () => {
+  assert.ok(Math.abs(nbOver(11, 8.5, Infinity) - nbOver(11, 8.5, 5000)) <= 1);
+});
+
+test('corners d\'une équipe : dispersion plus forte que le total', () => {
+  assert.ok(DISPERSION_CORNERS_TEAM < DISPERSION_CORNERS_TOTAL);
 });

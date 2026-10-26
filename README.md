@@ -110,3 +110,8 @@ Ouvrez ensuite votre navigateur sur **http://localhost:3000**.
 ---
 
 *Avertissement : estimations statistiques à titre indicatif, sans garantie de résultat. Réservé aux personnes majeures (18+).*
+
+
+## Efficacité mesurée
+Résultats d'un backtest walk-forward sur 10 305 matchs réels (2021-2025) : voir [backtest/RESULTATS.md](backtest/RESULTATS.md).
+En bref : probabilités bien calibrées (≈ 85 % annoncé pour ≈ 83,5 % réel), mais avantage faible sur une simple moyenne de championnat, et rentabilité non démontrée faute de cotes réelles. Estimations, aucune garantie.

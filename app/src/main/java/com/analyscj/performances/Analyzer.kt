@@ -503,12 +503,12 @@ class Analyzer(
         val regleCo = "Seuls les corners effectivement tirés comptent."
 
         val candidates = listOf(
-            Pick("cartons_jaunes", "match", "Plus de 3,5 Cartons Jaunes Match", 3.5, yellows, 1.25, regleCj),
-            Pick("cartons_jaunes", "match", "Plus de 2,5 Cartons Jaunes Match", 2.5, yellows, 1.25, regleCj),
-            Pick("corners", "match", "Plus de 8,5 Corners Match", 8.5, corners, 1.35, regleCo),
-            Pick("corners", "match", "Plus de 7,5 Corners Match", 7.5, corners, 1.35, regleCo),
-            Pick("corners", "domicile", "Corners $home Plus de 4,5", 4.5, hp.avgCornersFor, 1.35, regleCo),
-            Pick("cartons_jaunes", "exterieur", "Cartons Jaunes $away Plus de 1,5", 1.5, awayYellows, 1.25, regleCj)
+            Pick("cartons_jaunes", "match", "Plus de 3,5 Cartons Jaunes Match", 3.5, yellows, 1.02, regleCj),
+            Pick("cartons_jaunes", "match", "Plus de 2,5 Cartons Jaunes Match", 2.5, yellows, 1.02, regleCj),
+            Pick("corners", "match", "Plus de 8,5 Corners Match", 8.5, corners, 1.14, regleCo),
+            Pick("corners", "match", "Plus de 7,5 Corners Match", 7.5, corners, 1.14, regleCo),
+            Pick("corners", "domicile", "Corners $home Plus de 4,5", 4.5, hp.avgCornersFor, 1.42, regleCo),
+            Pick("cartons_jaunes", "exterieur", "Cartons Jaunes $away Plus de 1,5", 1.5, awayYellows, 1.02, regleCj)
         )
         candidates.forEach { it.proba = negBinOver(it.lambda, it.threshold, it.phi) }
         val retained = candidates.filter { it.proba >= 80 }.sortedByDescending { it.proba }

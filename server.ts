@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
-import { nbOver, calculateValueBet, DISPERSION_CORNERS, DISPERSION_YELLOWS } from './probability';
+import { nbOver, calculateValueBet, DISPERSION_CORNERS_TOTAL, DISPERSION_CORNERS_TEAM, DISPERSION_YELLOWS } from './probability';
 
 dotenv.config();
 
@@ -1674,7 +1674,8 @@ function computeTacticalWidthProfile(homeName: string, awayName: string) {
 
   const domicileScore = isHomeWing ? 92 : 74;
   const exterieurScore = isAwayWing ? 86 : 68;
-  const boostCorners = (isHomeWing ? 1.4 : 0.5) + (isAwayWing ? 1.0 : 0.4);
+  // Backtest (10 305 matchs) : le boost « ailiers » surestimait les corners de ~2 par match. Neutralisé.
+  const boostCorners = 0;
 
   return {
     domicile_ailiers_score: domicileScore,
@@ -1682,7 +1683,7 @@ function computeTacticalWidthProfile(homeName: string, awayName: string) {
     style_global: isHomeWing || isAwayWing
       ? 'Jeu ultra-large avec débordements 1v1 intensifs et centres répétés'
       : 'Projection axiale et attaques placées équilibrées',
-    impact_corners: `+${boostCorners.toFixed(1)} corners attendus par déviations défensives`,
+    impact_corners: 'Indicatif uniquement : sans effet sur le calcul (non validé par le backtest)',
     boostCorners,
   };
 }
@@ -1710,6 +1711,18 @@ function generateGameStates(expectedYellows: number, expectedCorners: number) {
     },
   ];
 }
+
+
+// Moyennes réelles 2021-2025 par championnat (backtest/RESULTATS.md), utilisées si l'équipe est inconnue.
+const LEAGUE_DEFAULTS: Record<string, { cornersDom: number; cornersExt: number; cartonsDom: number; cartonsExt: number }> = {
+  'Ligue 1': { cornersDom: 5.17, cornersExt: 4.31, cartonsDom: 1.72, cartonsExt: 2.01 },
+  'Premier League': { cornersDom: 5.64, cornersExt: 4.7, cartonsDom: 1.76, cartonsExt: 2.03 },
+  'Serie A': { cornersDom: 5.19, cornersExt: 4.16, cartonsDom: 1.93, cartonsExt: 2.28 },
+  'Bundesliga': { cornersDom: 5.4, cornersExt: 4.34, cartonsDom: 1.83, cartonsExt: 2.06 },
+  'La Liga': { cornersDom: 5.38, cornersExt: 4.12, cartonsDom: 2.28, cartonsExt: 2.48 },
+  'Premier League Portugal': { cornersDom: 5.31, cornersExt: 4.59, cartonsDom: 2.56, cartonsExt: 2.74 },
+};
+const GENERIC_DEFAULTS = { cornersDom: 5.3, cornersExt: 4.4, cartonsDom: 2.0, cartonsExt: 2.2 };
 
 // Algorithme de Rapprochement Statistique Déterministe Haut Débit (Loi de Poisson & Croisement)
 function calculateStatisticalRapprochement(
@@ -1740,20 +1753,21 @@ function calculateStatisticalRapprochement(
   // Largeur tactique et style ailiers
   const tactical = computeTacticalWidthProfile(homeName, awayName);
 
-  const homeCorners = foundMatch ? foundMatch.homeStats.avgCornersFor : 6.4;
-  const awayCorners = foundMatch ? foundMatch.awayStats.avgCornersFor : 5.2;
+  const defs = LEAGUE_DEFAULTS[leagueName] || GENERIC_DEFAULTS;
+  const homeCorners = foundMatch ? foundMatch.homeStats.avgCornersFor : defs.cornersDom;
+  const awayCorners = foundMatch ? foundMatch.awayStats.avgCornersFor : defs.cornersExt;
   const totalExpectedCorners = Number((homeCorners + awayCorners + tactical.boostCorners).toFixed(1));
 
-  const homeYellows = foundMatch ? foundMatch.homeStats.avgYellowsFor : 2.0;
-  const awayYellows = foundMatch ? foundMatch.awayStats.avgYellowsFor : 2.7;
+  const homeYellows = foundMatch ? foundMatch.homeStats.avgYellowsFor : defs.cartonsDom;
+  const awayYellows = foundMatch ? foundMatch.awayStats.avgYellowsFor : defs.cartonsExt;
   const refereeYellows = customRefereeYellows || (foundMatch ? foundMatch.referee.avgYellows : 4.8);
   const totalExpectedYellows = Number((homeYellows + awayYellows + (refereeYellows - 4.2) * 0.4).toFixed(1));
 
   // Probabilités réelles : loi binomiale négative (surdispersion), SANS plancher artificiel.
   const homeCornersAdj = homeCorners + tactical.boostCorners * 0.6;
   const awayYellowsAdj = awayYellows + (refereeYellows - 4.2) * 0.2;
-  const probaCornersPlus8_5 = nbOver(totalExpectedCorners, 8.5, DISPERSION_CORNERS);
-  const probaCornersHomePlus4_5 = nbOver(homeCornersAdj, 4.5, DISPERSION_CORNERS);
+  const probaCornersPlus8_5 = nbOver(totalExpectedCorners, 8.5, DISPERSION_CORNERS_TOTAL);
+  const probaCornersHomePlus4_5 = nbOver(homeCornersAdj, 4.5, DISPERSION_CORNERS_TEAM);
   const probaYellowsPlus3_5 = nbOver(totalExpectedYellows, 3.5, DISPERSION_YELLOWS);
   const probaYellowsAwayPlus1_5 = nbOver(awayYellowsAdj, 1.5, DISPERSION_YELLOWS);
 
